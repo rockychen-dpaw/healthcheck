@@ -9,7 +9,7 @@ from pexpect import pxssh
 # NOTE TO SELF: DON'T MOVE THESE IMPORTS ABOVE THE activate_this LINE!!!!1!
 import requests
 import bottle
-from bottle import route, run
+from bottle import route, run, static_file
 from datetime import datetime, timedelta
 from dateutil import parser
 import pytz
@@ -73,5 +73,9 @@ def healthcheck():
         output += "Finished checks, something is wrong =("
     return OUTPUT_TEMPLATE.format(output)
     return output
+
+@route('/favicon.ico', method='GET')
+def get_favicon():
+    return static_file('favicon.ico',root='./static/images/')
 
 application = bottle.default_app()
