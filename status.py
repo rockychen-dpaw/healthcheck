@@ -28,6 +28,7 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
 </html>'''
 
  
+SSS_DEVICES_URL = SSS_URL + '/api/v1/device/?seen__isnull=false&format=json'
 
 @route('/')
 def healthcheck():

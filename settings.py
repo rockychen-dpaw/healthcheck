@@ -1,6 +1,7 @@
 import os
 
-SSS_DEVICES_URL = os.environ.get('SSS_DEVICES_URL','https://sss.dpaw.wa.gov.au/api/v1/device/?seen__isnull=false&format=json')
+SSS_URL = os.environ.get('SSS_URL','https://sss.dpaw.wa.gov.au')
+if SSS_URL[-1:] == "/" : SSS_URL = SSS_URL[:-1]
 
 #Delay times
 TRACKING_POINTS_MAX_DELAY = 30  # Maximum allowable delay for tracking points (Minutes).
