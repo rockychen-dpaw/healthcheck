@@ -7,9 +7,9 @@ from pexpect import pxssh
 
 
 # NOTE TO SELF: DON'T MOVE THESE IMPORTS ABOVE THE activate_this LINE!!!!1!
-import requests
+from dpaw_utils import requests
 import bottle
-from bottle import route, run, static_file
+from bottle import route, run, static_file,request
 from datetime import datetime, timedelta
 from dateutil import parser
 import pytz
@@ -35,7 +35,7 @@ def healthcheck():
     output = "Server time (UTC): {0}<br>".format(now.isoformat())
     success = True
     # Resource Tracking points
-    r = requests.get("https://sss.dpaw.wa.gov.au/api/v1/device/?seen__isnull=false&format=json", auth=SSS_LOGIN_DATA)
+    r = requests.get(request,SSS_DEVICES_URL)
 
     
     try:
@@ -52,7 +52,7 @@ def healthcheck():
         success = False
         output += 'Resource Tracking load had an error: {}<br>'.format(e)
     # Observations AWS data
-    r = requests.get('https://observations.dpaw.wa.gov.au/api/v1/weatherobservation/?format=json&limit=1')
+    r = requests.get(request,'https://observations.dpaw.wa.gov.au/api/v1/weatherobservation/?format=json&limit=1')
     try:
         obsdata = json.loads(r.content)
         t = parser.parse(obsdata['objects'][0]['date'])  # Get the timestamp from the latest downloaded observation.

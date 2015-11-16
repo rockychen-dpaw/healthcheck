@@ -1,11 +1,6 @@
 import os
 
-#Environment variables
-SSS_USERNAME = os.environ['SSS_USERNAME'] if os.environ.get('SSS_USERNAME', False) else None
-SSS_PASSWORD = os.environ['SSS_PASSWORD'] if os.environ.get('SSS_PASSWORD', False) else None
-
-#Login data
-SSS_LOGIN_DATA = (SSS_USERNAME,SSS_PASSWORD)
+SSS_DEVICES_URL = os.environ.get('SSS_DEVICES_URL','https://sss.dpaw.wa.gov.au/api/v1/device/?seen__isnull=false&format=json')
 
 #Delay times
 TRACKING_POINTS_MAX_DELAY = 30  # Maximum allowable delay for tracking points (Minutes).
