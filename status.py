@@ -17,6 +17,7 @@ from settings import *
 
 
 OUTPUT_TEMPLATE = '''<!DOCTYPE html>
+<html lang="en">
     <head>
         <meta charset="utf-8">
         <title>DPaW OIM service health checks</title>
