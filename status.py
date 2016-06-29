@@ -30,6 +30,7 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
 
  
 SSS_DEVICES_URL = SSS_URL + '/api/v1/device/?seen__isnull=false&format=json'
+WEATHER_OBS_URL = SSS_URL + '/api/v1/weatherobservation/?format=json&limit=1'
 
 @route('/')
 def healthcheck():
@@ -37,7 +38,7 @@ def healthcheck():
     output = "Server time (UTC): {0}<br>".format(now.isoformat())
     success = True
     # Resource Tracking points
-    r = requests.get(request,SSS_DEVICES_URL)
+    r = requests.get(request, SSS_DEVICES_URL)
 
     
     try:
@@ -54,7 +55,7 @@ def healthcheck():
         success = False
         output += 'Resource Tracking load had an error: {}<br>'.format(e)
     # Observations AWS data
-    r = requests.get(request,'https://observations.dpaw.wa.gov.au/api/v1/weatherobservation/?format=json&limit=1')
+    r = requests.get(request, WEATHER_OBS_URL)
     try:
         obsdata = json.loads(r.content)
         t = parser.parse(obsdata['objects'][0]['date'])  # Get the timestamp from the latest downloaded observation.
