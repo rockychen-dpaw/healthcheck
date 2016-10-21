@@ -30,6 +30,7 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
 
  
 SSS_DEVICES_URL = SSS_URL + '/api/v1/device/?seen__isnull=false&format=json'
+SSS_IRIDIUM_URL = SSS_URL + '/api/v1/device/?seen__isnull=false&deviceid__contains=3000340&format=json'
 WEATHER_OBS_URL = SSS_URL + '/api/v1/weatherobservation/?format=json&limit=1'
 
 @route('/')
@@ -44,7 +45,7 @@ def healthcheck():
     try:
         trackingdata = json.loads(r.content)
         # Output latest point
-        output += "Latest tracking point (UTC): {0}<br>".format(trackingdata["objects"][0]["seen"])
+        output += "Latest tracking point (AWST): {0}<br>".format(trackingdata["objects"][0]["seen"])
         # output the delay
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             success = False
@@ -54,6 +55,21 @@ def healthcheck():
     except Exception as e:
         success = False
         output += 'Resource Tracking load had an error: {}<br>'.format(e)
+
+    try:
+        trackingdata = json.loads(requests.get(request, SSS_IRIDIUM_URL).content)
+        # Output latest point
+        output += "Latest Iridium tracking point (AWST): {0}<br>".format(trackingdata["objects"][0]["seen"])
+        # Output the delay
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            success = False
+            output += "Iridium Tracking Delay too high! Currently {0:.1f} min (max {1} min)<br>".format(trackingdata["objects"][0]["age_minutes"], TRACKING_POINTS_MAX_DELAY)
+        else:
+            output += "Iridium Tracking delay currently {0:.1f} min (max {1} min)<br>".format(trackingdata["objects"][0]["age_minutes"], TRACKING_POINTS_MAX_DELAY)
+    except Exception as e:
+        success = False
+        output += 'Iridium Resource Tracking load had an error: {}<br>'.format(e)
+
     # Observations AWS data
     r = requests.get(request, WEATHER_OBS_URL)
     try:
