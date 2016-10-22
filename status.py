@@ -76,16 +76,10 @@ def healthcheck():
         # Output latest point
         output += "Latest Dplus tracking point (AWST): {0}<br>".format(trackingdata["objects"][0]["seen"])
         # Output the delay
-        if trackingdata["objects"][0]["age_minutes"] > DPLUS_POINTS_MAX_DELAY and \
-            datetime.now().time() < datetime.strptime(DPLUS_IGNORE_START, "%H%M").time() and \
-            datetime.now().time() > datetime.strptime(DPLUS_IGNORE_END, "%H%M").time():
-            success = False
-            output += "Dplus Tracking Delay too high! Currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(trackingdata["objects"][0]["age_minutes"], DPLUS_POINTS_MAX_DELAY)
-        else:
-            output += "Dplus Tracking delay currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(trackingdata["objects"][0]["age_minutes"], DPLUS_POINTS_MAX_DELAY)
+        output += "Dplus Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(trackingdata["objects"][0]["age_minutes"])
     except Exception as e:
         success = False
-        output += 'Iridium Resource Tracking load had an error: {}<br><br>'.format(e)
+        output += 'Dplus Resource Tracking load had an error: {}<br><br>'.format(e)
     
     # Observations AWS data
     r = requests.get(request, WEATHER_OBS_URL)
