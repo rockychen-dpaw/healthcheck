@@ -98,10 +98,11 @@ def healthcheck():
     try:
         stations = json.loads(r.content)
         for i in stations['objects']:
-            print(i)
             output += '<li>{}: expected observations {}, actual observations {}, latest {} ({})</li>'.format(
                 i['name'], i['observations_expected_hr'], i['observations_actual_hr'],
                 i['last_reading'], i['observations_health'])
+            if i['observations_health'] == 'error':
+                success = False
         output += '</ul><br>'
     except:
         success = False
