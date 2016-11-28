@@ -1,19 +1,11 @@
-import os
-import sys
-import subprocess
-import json
-from pexpect import pxssh
-
-
-
-# NOTE TO SELF: DON'T MOVE THESE IMPORTS ABOVE THE activate_this LINE!!!!1!
 from dpaw_utils import requests
 import bottle
-from bottle import route, run, static_file,request
-from datetime import datetime, timedelta
+from bottle import route, static_file, request
+from datetime import datetime
 from dateutil import parser
-import pytz
-from settings import *
+import json
+
+from settings import RT_URL, TRACKING_POINTS_MAX_DELAY, AWS_DATA_MAX_DELAY
 
 
 OUTPUT_TEMPLATE = '''<!DOCTYPE html>
@@ -28,18 +20,20 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
     </body>
 </html>'''
 
- 
-SSS_DEVICES_URL = SSS_URL + '/api/v1/device/?seen__isnull=false&format=json'
-SSS_IRIDIUM_URL = SSS_URL + '/api/v1/device/?seen__isnull=false&deviceid__startswith=3000340&format=json'
-SSS_DPLUS_URL = SSS_URL + '/api/v1/device/?seen__isnull=false&deviceid__startswith=500&format=json'
-WEATHER_OBS_URL = SSS_URL + '/api/v1/weatherobservation/?format=json&limit=1'
+
+SSS_DEVICES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&format=json'
+SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&deviceid__startswith=3000340&format=json'
+SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&deviceid__startswith=500&format=json'
+WEATHER_OBS_URL = RT_URL + '/api/v1/weatherobservation/?format=json&limit=1'
+WEATHER_OBS_HEALTH_URL = RT_URL + '/weather/observations-health/'
+
 
 @route('/')
 def healthcheck():
     now = datetime.utcnow()
     output = "Server time (UTC): {0}<br><br>".format(now.isoformat())
     success = True
-    
+
     # All resource point tracking
     try:
         trackingdata = json.loads(requests.get(request, SSS_DEVICES_URL).content)
@@ -80,7 +74,7 @@ def healthcheck():
     except Exception as e:
         success = False
         output += 'Dplus Resource Tracking load had an error: {}<br><br>'.format(e)
-    
+
     # Observations AWS data
     r = requests.get(request, WEATHER_OBS_URL)
     try:
@@ -97,6 +91,23 @@ def healthcheck():
     except Exception as e:
         success = False
         output += 'Observations AWS load had an error: {}<br><br>'.format(e)
+
+    # Individual weather station observation status.
+    output += 'Weather station observation status (last hour):<br><ul>'
+    r = requests.get(request, WEATHER_OBS_HEALTH_URL)
+    try:
+        stations = json.loads(r.content)
+        for i in stations['objects']:
+            print(i)
+            output += '<li>{}: expected observations {}, actual observations {}, latest {} ({})</li>'.format(
+                i['name'], i['observations_expected_hr'], i['observations_actual_hr'],
+                i['last_reading'], i['observations_health'])
+        output += '</ul><br>'
+    except:
+        success = False
+        output += '<li>Error loading weather station status data</li></ul><br>'
+
+    # Success or failure.
     if success:
         output += "Finished checks, healthcheck succeeded!"
     else:
@@ -104,8 +115,10 @@ def healthcheck():
     return OUTPUT_TEMPLATE.format(output)
     return output
 
+
 @route('/favicon.ico', method='GET')
 def get_favicon():
-    return static_file('favicon.ico',root='./static/images/')
+    return static_file('favicon.ico', root='./static/images/')
+
 
 application = bottle.default_app()
