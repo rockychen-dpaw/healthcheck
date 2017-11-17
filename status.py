@@ -5,7 +5,7 @@ from datetime import datetime
 from dateutil import parser
 import json
 
-from settings import RT_URL, TRACKING_POINTS_MAX_DELAY, AWS_DATA_MAX_DELAY
+from settings import RT_URL, RT_URL_UAT, TRACKING_POINTS_MAX_DELAY, AWS_DATA_MAX_DELAY
 
 
 OUTPUT_TEMPLATE = '''<!DOCTYPE html>
@@ -22,8 +22,10 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
 
 
 SSS_DEVICES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&format=json'
-SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&deviceid__startswith=3000340&format=json'
-SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&deviceid__startswith=500&format=json'
+SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json'
+SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dplus&format=json'
+SSS_TRACPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json'
+SSS_DFES_URL = RT_URL_UAT + '/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json'
 WEATHER_OBS_URL = RT_URL + '/api/v1/weatherobservation/?format=json&limit=1'
 WEATHER_OBS_HEALTH_URL = RT_URL + '/weather/observations-health/'
 
@@ -75,6 +77,32 @@ def healthcheck():
         success = False
         output += 'Dplus Resource Tracking load had an error: {}<br><br>'.format(e)
 
+    # Tracplus Tracking
+    try:
+        trackingdata = json.loads(requests.get(request, SSS_TRACPLUS_URL).content)
+        # Output latest point
+        output += "Latest Tracplus tracking point (AWST): {0}<br>".format(trackingdata["objects"][0]["seen"])
+        # Output the delay
+        output += "Tracplus Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(trackingdata["objects"][0]["age_minutes"])
+    except Exception as e:
+        pass
+       # success = False
+       # output += 'Tracplus Resource Tracking load had an error: {}<br><br>'.format(e)
+
+    # DFES Tracking
+    try:
+        trackingdata = json.loads(requests.get(request, SSS_DFES_URL).content)
+        # Output latest point
+        output += "(UAT) Latest DFES tracking point (AWST): {0}<br>".format(trackingdata["objects"][0]["seen"])
+        # Output the delay
+        output += "(UAT) DFES Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(trackingdata["objects"][0]["age_minutes"])
+    except Exception as e:
+        pass
+        #success = False
+        output += '(UAT) DFES Resource Tracking load had an error: {}<br><br>'.format(e)
+
+
+
     # Observations AWS data
     r = requests.get(request, WEATHER_OBS_URL)
     try:
@@ -101,8 +129,8 @@ def healthcheck():
             output += '<li>{}: expected observations {}, actual observations {}, latest {} ({})</li>'.format(
                 i['name'], i['observations_expected_hr'], i['observations_actual_hr'],
                 i['last_reading'], i['observations_health'])
-            if i['observations_health'] == 'error':
-                success = False
+            #if i['observations_health'] == 'error':
+            #    success = False
         output += '</ul><br>'
     except:
         success = False
