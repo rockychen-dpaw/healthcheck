@@ -4,8 +4,9 @@ from bottle import route, static_file, request
 from datetime import datetime
 from dateutil import parser
 import json
+import requests as src_requests
 
-from settings import RT_URL, RT_URL_UAT, TRACKING_POINTS_MAX_DELAY, AWS_DATA_MAX_DELAY
+from settings import RT_URL, RT_URL_UAT, USER_SSO, PASS_SSO, TRACKING_POINTS_MAX_DELAY, AWS_DATA_MAX_DELAY
 
 
 OUTPUT_TEMPLATE = '''<!DOCTYPE html>
@@ -91,7 +92,7 @@ def healthcheck():
 
     # DFES Tracking
     try:
-        trackingdata = json.loads(requests.get(request, SSS_DFES_URL).content)
+        trackingdata = src_requests.get(SSS_DFES_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
         output += "(UAT) Latest DFES tracking point (AWST): {0}<br>".format(trackingdata["objects"][0]["seen"])
         # Output the delay
