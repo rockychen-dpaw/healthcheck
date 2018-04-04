@@ -1,6 +1,7 @@
 from dpaw_utils import requests
 import bottle
 from bottle import route, static_file, request
+from django.utils import timezone
 from datetime import datetime
 from dateutil import parser
 import json
@@ -110,7 +111,7 @@ def healthcheck():
         obsdata = json.loads(r.content)
         t = parser.parse(obsdata['objects'][0]['date'])  # Get the timestamp from the latest downloaded observation.
         output += "Latest weather data: {0}<br>".format(t.isoformat())
-        now = datetime.now(tz=None)
+        now = datetime.now(timezone.utc)
         delay = now - t
         if delay.seconds > AWS_DATA_MAX_DELAY:  # Allow one hour delay in Observations weather data.
             success = False
