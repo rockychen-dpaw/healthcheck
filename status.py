@@ -1,7 +1,9 @@
 from bottle import Bottle, static_file
 import confy
 from datetime import datetime
-from dateutil import parser
+from dateutil.parser import parse
+from dateutil.tz import tzoffset
+from dateutil.utils import default_tzinfo
 import os
 from pytz import timezone
 import requests
@@ -39,12 +41,13 @@ PASS_SSO = confy.env('PASS_SSO')
 TRACKING_POINTS_MAX_DELAY = confy.env('TRACKING_POINTS_MAX_DELAY', 30)
 # Maximum allowable delay for observation data (seconds).
 AWS_DATA_MAX_DELAY = confy.env('AWS_DATA_MAX_DELAY', 3600)
+AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
 
 
 @app.route('/')
 def healthcheck():
-    now = datetime.utcnow()
-    output = "Server time (UTC): {}<br><br>".format(now.isoformat())
+    now = datetime.now().astimezone(AWST_TZ)
+    output = "Server time (AWST): {}<br><br>".format(now.isoformat())
     success = True
 
     # All resource point tracking
@@ -118,9 +121,10 @@ def healthcheck():
     # Observations AWS data
     try:
         obsdata = requests.get(WEATHER_OBS_URL).json()
-        t = parser.parse(obsdata['objects'][0]['date'])  # Get the timestamp from the latest downloaded observation.
-        output += "Latest weather data: {0}<br>".format(t.isoformat())
-        now = datetime.now(timezone('UTC'))
+        # Get the timestamp from the latest downloaded observation.
+        t = default_tzinfo(parse(obsdata['objects'][0]['date']), AWST_TZ)
+        output += "Latest weather data (AWST): {0}<br>".format(t.isoformat())
+        now = datetime.now().astimezone(AWST_TZ)
         delay = now - t
         if delay.seconds > AWS_DATA_MAX_DELAY:  # Allow one hour delay in Observations weather data.
             success = False
