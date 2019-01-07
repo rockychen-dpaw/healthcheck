@@ -27,12 +27,11 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
     </body>
 </html>'''
 RT_URL = confy.env('RT_URL', 'https://resourcetracking.dpaw.wa.gov.au')
-RT_URL_UAT = confy.env('RT_URL_UAT', 'https://resourcetracking-uat.dpaw.wa.gov.au')
 SSS_DEVICES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&format=json'
 SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json'
 SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dplus&format=json'
 SSS_TRACPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json'
-SSS_DFES_URL = RT_URL_UAT + '/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json'
+SSS_DFES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json'
 WEATHER_OBS_URL = RT_URL + '/api/v1/weatherobservation/?format=json&limit=1'
 WEATHER_OBS_HEALTH_URL = RT_URL + '/weather/observations-health/'
 USER_SSO = confy.env('USER_SSO')
@@ -111,9 +110,9 @@ def healthcheck():
     try:
         trackingdata = requests.get(SSS_DFES_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
-        output += "(UAT) Latest DFES tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        output += "Latest DFES tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
         # Output the delay
-        output += "(UAT) DFES Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
+        output += "DFES Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
             trackingdata["objects"][0]["age_minutes"])
     except Exception as e:
         pass  # Currently this does not cause the healthcheck to fail.
