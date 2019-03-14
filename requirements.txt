@@ -1,5 +1,5 @@
 bottle==0.12.13
-requests==2.19.1
+requests==2.21.0
 django-confy==1.0.4
 python-dateutil==2.7.3
 pytz==2018.5
