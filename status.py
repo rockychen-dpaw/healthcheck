@@ -38,6 +38,8 @@ USER_SSO = confy.env('USER_SSO')
 PASS_SSO = confy.env('PASS_SSO')
 # Maximum allowable delay for tracking points (minutes).
 TRACKING_POINTS_MAX_DELAY = confy.env('TRACKING_POINTS_MAX_DELAY', 30)
+# Maximum allowable delay for aircraft tracking (minutes, optional).
+AIRCRAFT_TRACKING_MAX_DELAY = confy.env('AIRCRAFT_TRACKING_MAX_DELAY', None)
 # Maximum allowable delay for observation data (seconds).
 AWS_DATA_MAX_DELAY = confy.env('AWS_DATA_MAX_DELAY', 3600)
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
@@ -74,14 +76,14 @@ def healthcheck():
         # Output the delay
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             success = False
-            output += "Iridium Tracking Delay too high! Currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
+            output += "Iridium tracking delay too high! Currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
                 trackingdata["objects"][0]["age_minutes"], TRACKING_POINTS_MAX_DELAY)
         else:
-            output += "Iridium Tracking delay currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
+            output += "Iridium tracking delay currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
                 trackingdata["objects"][0]["age_minutes"], TRACKING_POINTS_MAX_DELAY)
     except Exception as e:
         success = False
-        output += 'Iridium Resource Tracking load had an error: {}<br><br>'.format(e)
+        output += 'Iridium resource tracking load had an error: {}<br><br>'.format(e)
 
     # Dplus Tracking
     try:
@@ -89,11 +91,20 @@ def healthcheck():
         # Output latest point
         output += "Latest Dplus tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
         # Output the delay
-        output += "Dplus Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
-            trackingdata["objects"][0]["age_minutes"])
+        if AIRCRAFT_TRACKING_MAX_DELAY and trackingdata["objects"][0]["age_minutes"] > AIRCRAFT_TRACKING_MAX_DELAY:
+            success = False
+            output += "Dplus tracking delay too high! Currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
+                trackingdata["objects"][0]["age_minutes"], AIRCRAFT_TRACKING_MAX_DELAY)
+        else:
+            if AIRCRAFT_TRACKING_MAX_DELAY:
+                output += "Dplus tracking delay currently <b>{0:.1f} min</b> (max {1} min) <br><br>".format(
+                    trackingdata["objects"][0]["age_minutes"], AIRCRAFT_TRACKING_MAX_DELAY)
+            else:
+                output += "Dplus tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
+                    trackingdata["objects"][0]["age_minutes"])
     except Exception as e:
         success = False
-        output += 'Dplus Resource Tracking load had an error: {}<br><br>'.format(e)
+        output += 'Dplus resource tracking load had an error: {}<br><br>'.format(e)
 
     # Tracplus Tracking
     try:
@@ -101,10 +112,10 @@ def healthcheck():
         # Output latest point
         output += "Latest Tracplus tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
         # Output the delay
-        output += "Tracplus Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
+        output += "Tracplus tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
             trackingdata["objects"][0]["age_minutes"])
     except Exception as e:
-        pass
+        pass  # Currently this does not cause the healthcheck to fail.
 
     # DFES Tracking
     try:
@@ -112,7 +123,7 @@ def healthcheck():
         # Output latest point
         output += "Latest DFES tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
         # Output the delay
-        output += "DFES Tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
+        output += "DFES tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
             trackingdata["objects"][0]["age_minutes"])
     except Exception as e:
         pass  # Currently this does not cause the healthcheck to fail.
