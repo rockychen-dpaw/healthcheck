@@ -19,10 +19,11 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="utf-8">
-        <title>DBCA OIM service health checks</title>
-        <meta name="description" content="DBCA OIM service health checks">
+        <title>DBCA Resource Tracking health checks</title>
+        <meta name="description" content="DBCA Resource Tracking health checks">
     </head>
     <body>
+        <h1>DBCA Resource Tracking health checks</h1>
         {}
     </body>
 </html>'''
@@ -129,6 +130,7 @@ def healthcheck():
         pass  # Currently this does not cause the healthcheck to fail.
 
     # Observations AWS data
+    '''
     try:
         obsdata = requests.get(WEATHER_OBS_URL).json()
         # Get the timestamp from the latest downloaded observation.
@@ -159,6 +161,7 @@ def healthcheck():
     except:
         success = False
         output += '<li>Error loading weather station status data</li></ul><br>'
+    '''
 
     # Success or failure.
     if success:
