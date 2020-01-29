@@ -1,12 +1,10 @@
 from bottle import Bottle, static_file
 import confy
 from datetime import datetime
-from dateutil.parser import parse
 from dateutil.tz import tzoffset
-from dateutil.utils import default_tzinfo
 import os
-from pytz import timezone
 import requests
+import xml.etree.ElementTree as ET
 
 
 dot_env = os.path.join(os.getcwd(), '.env')
@@ -19,11 +17,11 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="utf-8">
-        <title>DBCA Resource Tracking health checks</title>
-        <meta name="description" content="DBCA Resource Tracking health checks">
+        <title>DBCA Spatial Support System health checks</title>
+        <meta name="description" content="DBCA Spatial Support System health checks">
     </head>
     <body>
-        <h1>DBCA Resource Tracking health checks</h1>
+        <h1>DBCA Spatial Support System health checks</h1>
         {}
     </body>
 </html>'''
@@ -33,8 +31,8 @@ SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_typ
 SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dplus&format=json'
 SSS_TRACPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json'
 SSS_DFES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json'
-WEATHER_OBS_URL = RT_URL + '/api/v1/weatherobservation/?format=json&limit=1'
-WEATHER_OBS_HEALTH_URL = RT_URL + '/weather/observations-health/'
+CSW_API = confy.env('CSW_API', 'https://csw.dpaw.wa.gov.au/catalogue/api/records/?format=json&application__name=sss')
+KMI_URL = confy.env('KMI_URL', 'https://kmi.dpaw.wa.gov.au/geoserver')
 USER_SSO = confy.env('USER_SSO')
 PASS_SSO = confy.env('PASS_SSO')
 # Maximum allowable delay for tracking points (minutes).
@@ -129,8 +127,57 @@ def healthcheck():
     except Exception as e:
         pass  # Currently this does not cause the healthcheck to fail.
 
-    # Observations AWS data
+    # CSW catalogue API endpoint
+    try:
+        resp = requests.get(CSW_API, auth=(USER_SSO, PASS_SSO)).json()
+        output += 'CSW spatial catalogue for SSS: {} layers<br><br>'.format(len(resp))
+    except Exception as e:
+        success = False
+        output += 'CSW API endpoint returned an error: {}<br><br>'.format(e)
+
+    # Today's Burns WFS endpoint
+    try:
+        url = KMI_URL + '/wfs'
+        params = {'service': 'wfs', 'version': '1.1.0', 'request': 'GetFeature', 'typeNames': 'public:todays_burns', 'resultType': 'hits'}
+        resp = requests.get(url, params=params)
+        if not resp.status_code == 200:
+            resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        d = {i[0]: i[1] for i in root.items()}
+        output += "Today's burns count: {}<br><br>".format(d['numberOfFeatures'])
+    except Exception as e:
+        success = False
+        output += "Today's Burns WFS endpoint returned an error: {}<br><br>".format(e)
+
+    # KMI WMTS endpoint
+    try:
+        url = KMI_URL + '/public/gwc/service/wmts'
+        resp = requests.get(url, params={'request': 'getcapabilities'})
+        if not resp.status_code == 200:
+            resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        ns = {'wmts': 'http://www.opengis.net/wmts/1.0', 'ows': 'http://www.opengis.net/ows/1.1'}
+        layers = root.findall('.//wmts:Layer', ns)
+        output += 'KMI WMTS layer count (public workspace): {}<br><br>'.format(len(layers))
+    except Exception as e:
+        success = False
+        output += "KMI WMTS GetCapabilities request returned an error: {}<br><br>".format(e)
+
+    # BFRS profile API endpoint
+    try:
+        url = 'https://bfrs.dpaw.wa.gov.au/api/v1/profile/?format=json'
+        resp = requests.get(url, auth=(USER_SSO, PASS_SSO)).json()
+        output += 'BFRS profile API endpoint: OK<br><br>'
+    except Exception as e:
+        success = False
+        output += "BFRS profile API endpoint returned an error: {}<br><br>".format(e)
+
     '''
+    # Observations AWS data
+    from dateutil.parser import parse
+    from dateutil.utils import default_tzinfo
+    WEATHER_OBS_URL = RT_URL + '/api/v1/weatherobservation/?format=json&limit=1'
+    WEATHER_OBS_HEALTH_URL = RT_URL + '/weather/observations-health/'
     try:
         obsdata = requests.get(WEATHER_OBS_URL).json()
         # Get the timestamp from the latest downloaded observation.
