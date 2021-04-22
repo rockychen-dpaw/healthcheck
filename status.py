@@ -1,7 +1,8 @@
-from bottle import Bottle, static_file
+from bottle import Bottle, static_file, response
 import confy
 from datetime import datetime
 from dateutil.tz import tzoffset
+import json
 import os
 import requests
 import xml.etree.ElementTree as ET
@@ -25,12 +26,13 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
         {}
     </body>
 </html>'''
-RT_URL = confy.env('RT_URL', 'https://resourcetracking.dpaw.wa.gov.au')
+RT_URL = confy.env('RT_URL', 'https://resourcetracking.dbca.wa.gov.au')
 SSS_DEVICES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&format=json'
 SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json'
 SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dplus&format=json'
 SSS_TRACPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json'
 SSS_DFES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json'
+SSS_FLEETCARE_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json'
 CSW_API = confy.env('CSW_API', 'https://csw.dpaw.wa.gov.au/catalogue/api/records/?format=json&application__name=sss')
 KMI_URL = confy.env('KMI_URL', 'https://kmi.dpaw.wa.gov.au/geoserver')
 USER_SSO = confy.env('USER_SSO')
@@ -44,10 +46,106 @@ AWS_DATA_MAX_DELAY = confy.env('AWS_DATA_MAX_DELAY', 3600)
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
 
 
+@app.route('/json')
+def healthcheck_json():
+    d = {
+        'server_time': datetime.now().astimezone(AWST_TZ).isoformat(),
+        'success': True,
+        'latest_point': None,
+        'latest_point_delay': None,
+        'iridium_latest_point': None,
+        'iridium_latest_point_delay': None,
+        'dplus_latest_point': None,
+        'dplus_latest_point_delay': None,
+        'tracplus_latest_point': None,
+        'tracplus_latest_point_delay': None,
+        'dfes_latest_point': None,
+        'dfes_latest_point_delay': None,
+        'fleetcare_latest_point': None,
+        'fleetcare_latest_point_delay': None,
+        'csw_catalogue_count': None,
+        'todays_burns_count': None,
+        'kmi_wmts_layer_count': None,
+        'bfrs_profile_api_endpoint': None,
+    }
+
+    trackingdata = requests.get(SSS_DEVICES_URL).json()
+    d['latest_point'] = trackingdata["objects"][0]["seen"]
+    d['latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+    if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        d['success'] = False
+
+    trackingdata = requests.get(SSS_IRIDIUM_URL).json()
+    d['iridium_latest_point'] = trackingdata["objects"][0]["seen"]
+    d['iridium_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+    if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        d['success'] = False
+
+    trackingdata = requests.get(SSS_DPLUS_URL).json()
+    d['dplus_latest_point'] = trackingdata["objects"][0]["seen"]
+    d['dplus_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+    if trackingdata["objects"][0]["age_minutes"] > AIRCRAFT_TRACKING_MAX_DELAY:
+        d['success'] = False
+
+    trackingdata = requests.get(SSS_TRACPLUS_URL).json()
+    d['tracplus_latest_point'] = trackingdata["objects"][0]["seen"]
+    d['tracplus_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+
+    trackingdata = requests.get(SSS_DFES_URL, auth=(USER_SSO, PASS_SSO)).json()
+    d['dfes_latest_point'] = trackingdata["objects"][0]["seen"]
+    d['dfes_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+
+    trackingdata = requests.get(SSS_FLEETCARE_URL).json()
+    d['fleetcare_latest_point'] = trackingdata["objects"][0]["seen"]
+    d['fleetcare_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+    if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        d['success'] = False
+
+    try:
+        resp = requests.get(CSW_API, auth=(USER_SSO, PASS_SSO)).json()
+        d['csw_catalogue_count'] = len(resp)
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        url = KMI_URL + '/wfs'
+        params = {'service': 'wfs', 'version': '1.1.0', 'request': 'GetFeature', 'typeNames': 'public:todays_burns', 'resultType': 'hits'}
+        resp = requests.get(url, params=params)
+        if not resp.status_code == 200:
+            resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        resp_d = {i[0]: i[1] for i in root.items()}
+        d['todays_burns_count'] = resp_d['numberOfFeatures']
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        url = KMI_URL + '/public/gwc/service/wmts'
+        resp = requests.get(url, params={'request': 'getcapabilities'})
+        if not resp.status_code == 200:
+            resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        ns = {'wmts': 'http://www.opengis.net/wmts/1.0', 'ows': 'http://www.opengis.net/ows/1.1'}
+        layers = root.findall('.//wmts:Layer', ns)
+        d['kmi_wmts_layer_count'] = len(layers)
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        url = 'https://bfrs.dpaw.wa.gov.au/api/v1/profile/?format=json'
+        resp = requests.get(url, auth=(USER_SSO, PASS_SSO)).json()
+        d['bfrs_profile_api_endpoint'] = True
+    except Exception as e:
+        d['success'] = False
+
+    response.content_type = 'application/json'
+    return json.dumps(d)
+
+
 @app.route('/')
 def healthcheck():
     now = datetime.now().astimezone(AWST_TZ)
-    output = "Server time (AWST): {}<br><br>".format(now.isoformat())
+    output = "Server time: {}<br><br>".format(now.isoformat())
     success = True
 
     # All resource point tracking
@@ -127,6 +225,23 @@ def healthcheck():
     except Exception as e:
         pass  # Currently this does not cause the healthcheck to fail.
 
+    # Fleetcare Tracking
+    try:
+        trackingdata = requests.get(SSS_FLEETCARE_URL, auth=(USER_SSO, PASS_SSO)).json()
+        # Output latest point
+        output += "Latest Fleetcare tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        # Output the delay
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            success = False
+            output += "Fleetcare tracking delay too high! Currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
+                trackingdata["objects"][0]["age_minutes"], TRACKING_POINTS_MAX_DELAY)
+        else:
+            output += "Fleetcare tracking delay currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
+                trackingdata["objects"][0]["age_minutes"], TRACKING_POINTS_MAX_DELAY)
+    except Exception as e:
+        success = False
+        output += 'Fleetcare resource tracking had an error: {}<br><br>'.format(e)
+
     # CSW catalogue API endpoint
     try:
         resp = requests.get(CSW_API, auth=(USER_SSO, PASS_SSO)).json()
@@ -171,44 +286,6 @@ def healthcheck():
     except Exception as e:
         success = False
         output += "BFRS profile API endpoint returned an error: {}<br><br>".format(e)
-
-    '''
-    # Observations AWS data
-    from dateutil.parser import parse
-    from dateutil.utils import default_tzinfo
-    WEATHER_OBS_URL = RT_URL + '/api/v1/weatherobservation/?format=json&limit=1'
-    WEATHER_OBS_HEALTH_URL = RT_URL + '/weather/observations-health/'
-    try:
-        obsdata = requests.get(WEATHER_OBS_URL).json()
-        # Get the timestamp from the latest downloaded observation.
-        t = default_tzinfo(parse(obsdata['objects'][0]['date']), AWST_TZ)
-        output += "Latest weather data (AWST): {0}<br>".format(t.isoformat())
-        now = datetime.now().astimezone(AWST_TZ)
-        delay = now - t
-        if delay.seconds > AWS_DATA_MAX_DELAY:  # Allow one hour delay in Observations weather data.
-            success = False
-            output += 'Observations AWS data delay too high! Currently: <b>{0:.1f} min</b> (max {1} min)<br><br>'.format(
-                delay.seconds / 60., AWS_DATA_MAX_DELAY / 60)
-        else:
-            output += 'Observations AWS data delay currently <b>{0:.1f} min</b> (max {1} min)<br><br>'.format(
-                delay.seconds / 60., AWS_DATA_MAX_DELAY / 60)
-    except Exception as e:
-        success = False
-        output += 'Observations AWS load had an error: {}<br><br>'.format(e)
-
-    # Individual weather station observation status.
-    output += 'Weather station observation status (last hour):<br><ul>'
-    try:
-        stations = requests.get(WEATHER_OBS_HEALTH_URL).json()
-        for i in stations['objects']:
-            output += '<li>{}: expected observations {}, actual observations {}, latest {} ({})</li>'.format(
-                i['name'], i['observations_expected_hr'], i['observations_actual_hr'],
-                i['last_reading'], i['observations_health'])
-        output += '</ul><br>'
-    except:
-        success = False
-        output += '<li>Error loading weather station status data</li></ul><br>'
-    '''
 
     # Success or failure.
     if success:
