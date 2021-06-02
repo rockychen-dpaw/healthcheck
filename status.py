@@ -35,6 +35,7 @@ SSS_DFES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=d
 SSS_FLEETCARE_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json'
 CSW_API = confy.env('CSW_API', 'https://csw.dpaw.wa.gov.au/catalogue/api/records/?format=json&application__name=sss')
 KMI_URL = confy.env('KMI_URL', 'https://kmi.dpaw.wa.gov.au/geoserver')
+BFRS_URL = confy.env('BFRS_URL', 'https://bfrs.dpaw.wa.gov.au/api/v1/profile/?format=json')
 USER_SSO = confy.env('USER_SSO')
 PASS_SSO = confy.env('PASS_SSO')
 # Maximum allowable delay for tracking points (minutes).
@@ -280,8 +281,7 @@ def healthcheck():
 
     # BFRS profile API endpoint
     try:
-        url = 'https://bfrs.dpaw.wa.gov.au/api/v1/profile/?format=json'
-        resp = requests.get(url, auth=(USER_SSO, PASS_SSO)).json()
+        resp = requests.get(BFRS_URL, auth=(USER_SSO, PASS_SSO)).json()
         output += 'BFRS profile API endpoint: OK<br><br>'
     except Exception as e:
         success = False
