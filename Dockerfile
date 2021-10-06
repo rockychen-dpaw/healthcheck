@@ -1,15 +1,18 @@
 # Prepare the base environment.
-FROM python:3.8.9-slim-buster as builder_base
+FROM python:3.9.6-slim-buster as builder_base
 MAINTAINER asi@dbca.wa.gov.au
+LABEL org.opencontainers.image.source https://github.com/dbca-wa/healthcheck
+
 RUN apt-get update -y \
   && apt-get upgrade -y \
+  && apt-get install --no-install-recommends -y wget python3-dev \
   && rm -rf /var/lib/apt/lists/* \
   && pip install --upgrade pip
 
 # Install Python libs using Poetry.
 FROM builder_base as python_libs
 WORKDIR /app
-ENV POETRY_VERSION=1.1.5
+ENV POETRY_VERSION=1.1.11
 RUN pip install "poetry==$POETRY_VERSION"
 RUN python -m venv /venv
 COPY poetry.lock pyproject.toml /app/
