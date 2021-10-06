@@ -1,5 +1,4 @@
 from bottle import Bottle, static_file, response
-import confy
 from datetime import datetime
 from dateutil.tz import tzoffset
 import json
@@ -10,7 +9,8 @@ import xml.etree.ElementTree as ET
 
 dot_env = os.path.join(os.getcwd(), '.env')
 if os.path.exists(dot_env):
-    confy.read_environment_file()
+    from dotenv import load_dotenv
+    load_dotenv()
 app = application = Bottle()
 
 
@@ -26,24 +26,24 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
         {}
     </body>
 </html>'''
-RT_URL = confy.env('RT_URL', 'https://resourcetracking.dbca.wa.gov.au')
+RT_URL = os.environ.get('RT_URL', 'https://resourcetracking.dbca.wa.gov.au')
 SSS_DEVICES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&format=json'
 SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json'
 SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dplus&format=json'
 SSS_TRACPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json'
 SSS_DFES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json'
 SSS_FLEETCARE_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json'
-CSW_API = confy.env('CSW_API', 'https://csw.dpaw.wa.gov.au/catalogue/api/records/?format=json&application__name=sss')
-KMI_URL = confy.env('KMI_URL', 'https://kmi.dpaw.wa.gov.au/geoserver')
-BFRS_URL = confy.env('BFRS_URL', 'https://bfrs.dpaw.wa.gov.au/api/v1/profile/?format=json')
-USER_SSO = confy.env('USER_SSO')
-PASS_SSO = confy.env('PASS_SSO')
+CSW_API = os.environ.get('CSW_API', 'https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss')
+KMI_URL = os.environ.get('KMI_URL', 'https://kmi.dbca.wa.gov.au/geoserver')
+BFRS_URL = os.environ.get('BFRS_URL', 'https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json')
+USER_SSO = os.environ.get('USER_SSO', 'asi@dbca.wa.gov.au')
+PASS_SSO = os.environ.get('PASS_SSO', 'password')
 # Maximum allowable delay for tracking points (minutes).
-TRACKING_POINTS_MAX_DELAY = confy.env('TRACKING_POINTS_MAX_DELAY', 30)
+TRACKING_POINTS_MAX_DELAY = int(os.environ.get('TRACKING_POINTS_MAX_DELAY', 30))
 # Maximum allowable delay for aircraft tracking (minutes, optional).
-AIRCRAFT_TRACKING_MAX_DELAY = confy.env('AIRCRAFT_TRACKING_MAX_DELAY', None)
+AIRCRAFT_TRACKING_MAX_DELAY = int(os.environ.get('AIRCRAFT_TRACKING_MAX_DELAY', 0))
 # Maximum allowable delay for observation data (seconds).
-AWS_DATA_MAX_DELAY = confy.env('AWS_DATA_MAX_DELAY', 3600)
+AWS_DATA_MAX_DELAY = int(os.environ.get('AWS_DATA_MAX_DELAY', 3600))
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
 
 
@@ -303,4 +303,4 @@ def get_favicon():
 
 if __name__ == '__main__':
     from bottle import run
-    run(application, host='0.0.0.0', port=confy.env('PORT', 8080))
+    run(application, host='0.0.0.0', port=os.environ.get('PORT', 8080))
