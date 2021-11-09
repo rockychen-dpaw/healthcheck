@@ -3,11 +3,14 @@ name: docker-image-build
 on:
   push:
     # Publish `master` as `latest` image.
-    branches: [ master ]
+    branches:
+      - 'master'
     # Publish `1.*` tags as releases.
-    tags: [ '1.*' ]
+    tags:
+      - '1.*'
   pull_request:
-    branches: [ master ]
+    branches:
+      - 'master'
 
 env:
   REGISTRY: ghcr.io
