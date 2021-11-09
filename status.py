@@ -122,7 +122,7 @@ def healthcheck_json():
 
     try:
         url = KMI_URL + '/public/gwc/service/wmts'
-        resp = requests.get(url, params={'request': 'getcapabilities'})
+        resp = requests.get(url, auth=(USER_SSO, PASS_SSO), params={'request': 'getcapabilities'})
         if not resp.status_code == 200:
             resp.raise_for_status()
         root = ET.fromstring(resp.content)
@@ -268,7 +268,7 @@ def healthcheck():
     # KMI WMTS endpoint
     try:
         url = KMI_URL + '/public/gwc/service/wmts'
-        resp = requests.get(url, params={'request': 'getcapabilities'})
+        resp = requests.get(url, auth=(USER_SSO, PASS_SSO), params={'request': 'getcapabilities'})
         if not resp.status_code == 200:
             resp.raise_for_status()
         root = ET.fromstring(resp.content)
