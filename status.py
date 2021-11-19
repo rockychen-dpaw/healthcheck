@@ -133,7 +133,7 @@ def healthcheck_json():
         d['success'] = False
 
     try:
-        resp = requests.get(BFRS_URL,, auth=(USER_SSO, PASS_SSO)).json()
+        resp = requests.get(BFRS_URL, auth=(USER_SSO, PASS_SSO)).json()
         d['bfrs_profile_api_endpoint'] = True
     except Exception as e:
         d['success'] = False
