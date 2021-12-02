@@ -1,6 +1,7 @@
 from bottle import Bottle, static_file, response
 from datetime import datetime
 from dateutil.tz import tzoffset
+from dateutil.parser import parse
 import json
 import os
 import requests
@@ -42,8 +43,6 @@ PASS_SSO = os.environ.get('PASS_SSO', 'password')
 TRACKING_POINTS_MAX_DELAY = int(os.environ.get('TRACKING_POINTS_MAX_DELAY', 30))
 # Maximum allowable delay for aircraft tracking (minutes, optional).
 AIRCRAFT_TRACKING_MAX_DELAY = int(os.environ.get('AIRCRAFT_TRACKING_MAX_DELAY', 0))
-# Maximum allowable delay for observation data (seconds).
-AWS_DATA_MAX_DELAY = int(os.environ.get('AWS_DATA_MAX_DELAY', 3600))
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
 
 
@@ -70,34 +69,40 @@ def healthcheck_json():
         'bfrs_profile_api_endpoint': None,
     }
 
-    trackingdata = requests.get(SSS_DEVICES_URL).json()
-    d['latest_point'] = trackingdata["objects"][0]["seen"]
+    trackingdata = requests.get(SSS_DEVICES_URL, auth=(USER_SSO, PASS_SSO)).json()
+    t = parse(trackingdata["objects"][0]["seen"])
+    d['latest_point'] = t.astimezone(AWST_TZ).isoformat()
     d['latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
     if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
         d['success'] = False
 
-    trackingdata = requests.get(SSS_IRIDIUM_URL).json()
-    d['iridium_latest_point'] = trackingdata["objects"][0]["seen"]
+    trackingdata = requests.get(SSS_IRIDIUM_URL, auth=(USER_SSO, PASS_SSO)).json()
+    t = parse(trackingdata["objects"][0]["seen"])
+    d['iridium_latest_point'] = t.astimezone(AWST_TZ).isoformat()
     d['iridium_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
     if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
         d['success'] = False
 
-    trackingdata = requests.get(SSS_DPLUS_URL).json()
-    d['dplus_latest_point'] = trackingdata["objects"][0]["seen"]
+    trackingdata = requests.get(SSS_DPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
+    t = parse(trackingdata["objects"][0]["seen"])
+    d['dplus_latest_point'] = t.astimezone(AWST_TZ).isoformat()
     d['dplus_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
-    if trackingdata["objects"][0]["age_minutes"] > AIRCRAFT_TRACKING_MAX_DELAY:
+    if AIRCRAFT_TRACKING_MAX_DELAY and trackingdata["objects"][0]["age_minutes"] > AIRCRAFT_TRACKING_MAX_DELAY:
         d['success'] = False
 
-    trackingdata = requests.get(SSS_TRACPLUS_URL).json()
-    d['tracplus_latest_point'] = trackingdata["objects"][0]["seen"]
+    trackingdata = requests.get(SSS_TRACPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
+    t = parse(trackingdata["objects"][0]["seen"])
+    d['tracplus_latest_point'] = t.astimezone(AWST_TZ).isoformat()
     d['tracplus_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
 
     trackingdata = requests.get(SSS_DFES_URL, auth=(USER_SSO, PASS_SSO)).json()
-    d['dfes_latest_point'] = trackingdata["objects"][0]["seen"]
+    t = parse(trackingdata["objects"][0]["seen"])
+    d['dfes_latest_point'] = t.astimezone(AWST_TZ).isoformat()
     d['dfes_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
 
-    trackingdata = requests.get(SSS_FLEETCARE_URL).json()
-    d['fleetcare_latest_point'] = trackingdata["objects"][0]["seen"]
+    trackingdata = requests.get(SSS_FLEETCARE_URL, auth=(USER_SSO, PASS_SSO)).json()
+    t = parse(trackingdata["objects"][0]["seen"])
+    d['fleetcare_latest_point'] = t.astimezone(AWST_TZ).isoformat()
     d['fleetcare_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
     if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
         d['success'] = False
@@ -116,7 +121,7 @@ def healthcheck_json():
             resp.raise_for_status()
         root = ET.fromstring(resp.content)
         resp_d = {i[0]: i[1] for i in root.items()}
-        d['todays_burns_count'] = resp_d['numberOfFeatures']
+        d['todays_burns_count'] = int(resp_d['numberOfFeatures'])
     except Exception as e:
         d['success'] = False
 
@@ -133,8 +138,7 @@ def healthcheck_json():
         d['success'] = False
 
     try:
-        url = 'https://bfrs.dpaw.wa.gov.au/api/v1/profile/?format=json'
-        resp = requests.get(url, auth=(USER_SSO, PASS_SSO)).json()
+        resp = requests.get(BFRS_URL, auth=(USER_SSO, PASS_SSO)).json()
         d['bfrs_profile_api_endpoint'] = True
     except Exception as e:
         d['success'] = False
@@ -151,9 +155,10 @@ def healthcheck():
 
     # All resource point tracking
     try:
-        trackingdata = requests.get(SSS_DEVICES_URL).json()
+        trackingdata = requests.get(SSS_DEVICES_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
-        output += "Latest tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        t = parse(trackingdata["objects"][0]["seen"])
+        output += "Latest tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
         # Output the delay
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             success = False
@@ -168,9 +173,10 @@ def healthcheck():
 
     # Iridium tracking
     try:
-        trackingdata = requests.get(SSS_IRIDIUM_URL).json()
+        trackingdata = requests.get(SSS_IRIDIUM_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
-        output += "Latest Iridium tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        t = parse(trackingdata["objects"][0]["seen"])
+        output += "Latest Iridium tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
         # Output the delay
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             success = False
@@ -185,9 +191,10 @@ def healthcheck():
 
     # Dplus Tracking
     try:
-        trackingdata = requests.get(SSS_DPLUS_URL).json()
+        trackingdata = requests.get(SSS_DPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
-        output += "Latest Dplus tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        t = parse(trackingdata["objects"][0]["seen"])
+        output += "Latest Dplus tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
         # Output the delay
         if AIRCRAFT_TRACKING_MAX_DELAY and trackingdata["objects"][0]["age_minutes"] > AIRCRAFT_TRACKING_MAX_DELAY:
             success = False
@@ -206,9 +213,10 @@ def healthcheck():
 
     # Tracplus Tracking
     try:
-        trackingdata = requests.get(SSS_TRACPLUS_URL).json()
+        trackingdata = requests.get(SSS_TRACPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
-        output += "Latest Tracplus tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        t = parse(trackingdata["objects"][0]["seen"])
+        output += "Latest Tracplus tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
         # Output the delay
         output += "Tracplus tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
             trackingdata["objects"][0]["age_minutes"])
@@ -219,7 +227,8 @@ def healthcheck():
     try:
         trackingdata = requests.get(SSS_DFES_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
-        output += "Latest DFES tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        t = parse(trackingdata["objects"][0]["seen"])
+        output += "Latest DFES tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
         # Output the delay
         output += "DFES tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
             trackingdata["objects"][0]["age_minutes"])
@@ -230,7 +239,8 @@ def healthcheck():
     try:
         trackingdata = requests.get(SSS_FLEETCARE_URL, auth=(USER_SSO, PASS_SSO)).json()
         # Output latest point
-        output += "Latest Fleetcare tracking point (AWST): {}<br>".format(trackingdata["objects"][0]["seen"])
+        t = parse(trackingdata["objects"][0]["seen"])
+        output += "Latest Fleetcare tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
         # Output the delay
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             success = False
