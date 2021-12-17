@@ -70,7 +70,7 @@ def healthcheck_json():
         'todays_burns_count': None,
         'kmi_wmts_layer_count': None,
         'bfrs_profile_api_endpoint': None,
-        'auth2_status':None
+        'auth2_status': None
     }
 
     trackingdata = requests.get(SSS_DEVICES_URL, auth=(USER_SSO, PASS_SSO)).json()
@@ -150,7 +150,8 @@ def healthcheck_json():
     try:
         resp = requests.get(AUTH2_STATUS_URL, auth=(USER_SSO, PASS_SSO))
         resp.raise_for_status()
-        d['auth2_status'] = resp.json()
+        j = resp.json()
+        d['auth2_status'] = j["healthy"][0]
     except Exception as e:
         d['success'] = False
 
