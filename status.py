@@ -37,6 +37,9 @@ SSS_FLEETCARE_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_t
 CSW_API = os.environ.get('CSW_API', 'https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss')
 KMI_URL = os.environ.get('KMI_URL', 'https://kmi.dbca.wa.gov.au/geoserver')
 BFRS_URL = os.environ.get('BFRS_URL', 'https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json')
+AUTH2_URL = os.environ.get('AUTH2_URL', 'https://auth2.dbca.wa.gov.au/healthcheck')
+AUTH2_STATUS_URL = os.environ.get('AUTH2_URL', 'https://auth2.dbca.wa.gov.au/status')
+
 USER_SSO = os.environ.get('USER_SSO', 'asi@dbca.wa.gov.au')
 PASS_SSO = os.environ.get('PASS_SSO', 'password')
 # Maximum allowable delay for tracking points (minutes).
@@ -67,6 +70,7 @@ def healthcheck_json():
         'todays_burns_count': None,
         'kmi_wmts_layer_count': None,
         'bfrs_profile_api_endpoint': None,
+        'auth2_status':None
     }
 
     trackingdata = requests.get(SSS_DEVICES_URL, auth=(USER_SSO, PASS_SSO)).json()
@@ -140,6 +144,13 @@ def healthcheck_json():
     try:
         resp = requests.get(BFRS_URL, auth=(USER_SSO, PASS_SSO)).json()
         d['bfrs_profile_api_endpoint'] = True
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        resp = requests.get(AUTH2_STATUS_URL, auth=(USER_SSO, PASS_SSO))
+        resp.raise_for_status()
+        d['auth2_status'] = resp.json()
     except Exception as e:
         d['success'] = False
 
@@ -296,6 +307,15 @@ def healthcheck():
     except Exception as e:
         success = False
         output += "BFRS profile API endpoint returned an error: {}<br><br>".format(e)
+
+    # AUTH2 healthcheck
+    try:
+        resp = requests.get(AUTH2_URL, auth=(USER_SSO, PASS_SSO))
+        resp.raise_for_status()
+        output += 'AUTH2 : OK<br><br>'
+    except Exception as e:
+        success = False
+        output += "AUTH2 returned an error: {}<br><br>".format(e)
 
     # Success or failure.
     if success:
