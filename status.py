@@ -30,7 +30,6 @@ OUTPUT_TEMPLATE = '''<!DOCTYPE html>
 RT_URL = os.environ.get('RT_URL', 'https://resourcetracking.dbca.wa.gov.au')
 SSS_DEVICES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&format=json'
 SSS_IRIDIUM_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json'
-SSS_DPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dplus&format=json'
 SSS_TRACPLUS_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json'
 SSS_DFES_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json'
 SSS_FLEETCARE_URL = RT_URL + '/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json'
@@ -58,8 +57,6 @@ def healthcheck_json():
         'latest_point_delay': None,
         'iridium_latest_point': None,
         'iridium_latest_point_delay': None,
-        'dplus_latest_point': None,
-        'dplus_latest_point_delay': None,
         'tracplus_latest_point': None,
         'tracplus_latest_point_delay': None,
         'dfes_latest_point': None,
@@ -85,13 +82,6 @@ def healthcheck_json():
     d['iridium_latest_point'] = t.astimezone(AWST_TZ).isoformat()
     d['iridium_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
     if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-        d['success'] = False
-
-    trackingdata = requests.get(SSS_DPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
-    t = parse(trackingdata["objects"][0]["seen"])
-    d['dplus_latest_point'] = t.astimezone(AWST_TZ).isoformat()
-    d['dplus_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
-    if AIRCRAFT_TRACKING_MAX_DELAY and trackingdata["objects"][0]["age_minutes"] > AIRCRAFT_TRACKING_MAX_DELAY:
         d['success'] = False
 
     trackingdata = requests.get(SSS_TRACPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
@@ -151,7 +141,7 @@ def healthcheck_json():
         resp = requests.get(AUTH2_STATUS_URL, auth=(USER_SSO, PASS_SSO))
         resp.raise_for_status()
         j = resp.json()
-        d['auth2_status'] = j["healthy"][0]
+        d["auth2_status"] = j["healthy"]
     except Exception as e:
         d['success'] = False
 
@@ -200,28 +190,6 @@ def healthcheck():
     except Exception as e:
         success = False
         output += 'Iridium resource tracking load had an error: {}<br><br>'.format(e)
-
-    # Dplus Tracking
-    try:
-        trackingdata = requests.get(SSS_DPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
-        # Output latest point
-        t = parse(trackingdata["objects"][0]["seen"])
-        output += "Latest Dplus tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
-        # Output the delay
-        if AIRCRAFT_TRACKING_MAX_DELAY and trackingdata["objects"][0]["age_minutes"] > AIRCRAFT_TRACKING_MAX_DELAY:
-            success = False
-            output += "Dplus tracking delay too high! Currently <b>{0:.1f} min</b> (max {1} min)<br><br>".format(
-                trackingdata["objects"][0]["age_minutes"], AIRCRAFT_TRACKING_MAX_DELAY)
-        else:
-            if AIRCRAFT_TRACKING_MAX_DELAY:
-                output += "Dplus tracking delay currently <b>{0:.1f} min</b> (max {1} min) <br><br>".format(
-                    trackingdata["objects"][0]["age_minutes"], AIRCRAFT_TRACKING_MAX_DELAY)
-            else:
-                output += "Dplus tracking delay currently <b>{0:.1f} min</b> <br><br>".format(
-                    trackingdata["objects"][0]["age_minutes"])
-    except Exception as e:
-        success = False
-        output += 'Dplus resource tracking load had an error: {}<br><br>'.format(e)
 
     # Tracplus Tracking
     try:
@@ -313,7 +281,7 @@ def healthcheck():
     try:
         resp = requests.get(AUTH2_URL, auth=(USER_SSO, PASS_SSO))
         resp.raise_for_status()
-        output += 'AUTH2 : OK<br><br>'
+        output += 'AUTH2 status: OK<br><br>'
     except Exception as e:
         success = False
         output += "AUTH2 returned an error: {}<br><br>".format(e)
