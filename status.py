@@ -146,6 +146,7 @@ def healthcheck_json():
         d['success'] = False
 
     response.content_type = 'application/json'
+    response.set_header('Cache-Control', 'private, max-age=0')
     return json.dumps(d)
 
 
@@ -292,6 +293,7 @@ def healthcheck():
     else:
         output += "<b>Finished checks, something is wrong =(</b>"
 
+    response.set_header('Cache-Control', 'private, max-age=0')
     return OUTPUT_TEMPLATE.format(output)
 
 
