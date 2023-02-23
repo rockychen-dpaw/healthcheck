@@ -12,7 +12,7 @@ environment. With Poetry installed, change into the project directory and run:
 
 To run Python commands in the virtualenv, thereafter run them like so:
 
-    poetry run python manage.py
+    poetry run python
 
 Manage new or updating project dependencies with Poetry also, like so:
 
@@ -24,13 +24,13 @@ This project uses **django-confy** to set environment variables (in a `.env` fil
 The following variables are required for the project to run (others have
 default values):
 
-    RT_URL="https://resourcetracking.dbca.wa.gov.au"
-    USER_SSO="some.user@dbca.wa.gov.au"
-    PASS_SSO="password"
+    RT_URL=https://resourcetracking.dbca.wa.gov.au
+    USER_SSO=some.user@dbca.wa.gov.au
+    PASS_SSO=password
 
 # Running
 
-Use `runserver` to run a local copy of the application:
+Use `python status.py` to run a local copy of the application:
 
     poetry run python status.py
 
@@ -41,4 +41,8 @@ variable value for `PORT`.
 
 To build a new Docker image from the `Dockerfile`:
 
-    docker image build -t dbcawa/healthcheck:latest .
+    docker image build -t ghcr.io/dbca-wa/healthcheck .
+
+To run a Docker container locally, publishing port 8080 to a different local port:
+
+    docker container run --rm --publish 8211:8080 --env-file .env ghcr.io/dbca-wa/healthcheck
