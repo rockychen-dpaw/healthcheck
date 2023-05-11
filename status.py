@@ -42,7 +42,7 @@ AUTH2_STATUS_URL = os.environ.get('AUTH2_URL', 'https://auth2.dbca.wa.gov.au/sta
 USER_SSO = os.environ.get('USER_SSO', 'asi@dbca.wa.gov.au')
 PASS_SSO = os.environ.get('PASS_SSO', 'password')
 # Maximum allowable delay for tracking points (minutes).
-TRACKING_POINTS_MAX_DELAY = int(os.environ.get('TRACKING_POINTS_MAX_DELAY', 30))
+TRACKING_POINTS_MAX_DELAY = int(os.environ.get('TRACKING_POINTS_MAX_DELAY', 120))
 # Maximum allowable delay for aircraft tracking (minutes, optional).
 AIRCRAFT_TRACKING_MAX_DELAY = int(os.environ.get('AIRCRAFT_TRACKING_MAX_DELAY', 0))
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
