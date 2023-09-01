@@ -1,7 +1,0 @@
-namespace: default
-secretGenerator:
-- name: healthcheck-uat-env
-  envs:
-  - .env
-resources:
-- healthcheck.yaml
