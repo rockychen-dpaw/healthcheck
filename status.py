@@ -48,6 +48,16 @@ AIRCRAFT_TRACKING_MAX_DELAY = int(os.environ.get('AIRCRAFT_TRACKING_MAX_DELAY', 
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
 
 
+@app.route('/readiness')
+def readiness():
+    return 'OK'
+
+
+@app.route('/liveness')
+def liveness():
+    return 'OK'
+
+
 @app.route('/json')
 def healthcheck_json():
     d = {
