@@ -15,5 +15,5 @@ spec:
     spec:
       containers:
       - name: healthcheck
-        image: ghcr.io/dbca-wa/healthcheck:1.1.9
+        image: ghcr.io/dbca-wa/healthcheck:1.1.10
         imagePullPolicy: IfNotPresent
