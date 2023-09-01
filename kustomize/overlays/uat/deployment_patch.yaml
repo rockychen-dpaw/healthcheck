@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthcheck-deployment
+  labels:
+    app: healthcheck-uat
+spec:
+  selector:
+    matchLabels:
+      app: healthcheck-uat
+  template:
+    metadata:
+      labels:
+        app: healthcheck-uat
+    spec:
+      containers:
+      - name: healthcheck
+        image: ghcr.io/dbca-wa/healthcheck
+        imagePullPolicy: Always

@@ -1,13 +1,29 @@
-# Overview
+# SSS Healthcheck Kubernetes Kustomize overlay configuration
 
-The Healthcheck application serves an internal service endpoint health check for
-the data services used by the Spatial Support System.
+Declarative management of SSS Healthcheck objects using Kustomize.
 
-This repository contains resource definitions to deploy the application to a
-Kubernetes cluster using Kustomize.
+# How to use
 
-# Deployment
+Within an overlay directory, create a `.env` file to contain required secret
+values in the format KEY=value (i.e. `overlays/uat/.env`). Required values:
 
-1. Create a `.env` file in this directory with required environmental variables
-   in the format `KEY=value`.
-2. Deploy using Kustomize, e.g. `kubectl apply -k .`
+    DATABASE_URL=value
+    SECRET_KEY=value
+
+Review the built resource output using `kustomize`:
+
+```bash
+kustomize build kustomize/overlays/uat/ | less
+```
+
+Run `kubectl` with the `-k` flag to generate resources for a given overlay:
+
+```bash
+kubectl apply -k kustomize/overlays/uat --namespace sss --dry-run=client
+```
+
+# References:
+
+* https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/
+* https://github.com/kubernetes-sigs/kustomize
+* https://github.com/kubernetes-sigs/kustomize/tree/master/examples
