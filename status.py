@@ -38,13 +38,9 @@ KMI_URL = os.environ.get('KMI_URL', 'https://kmi.dbca.wa.gov.au/geoserver')
 BFRS_URL = os.environ.get('BFRS_URL', 'https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json')
 AUTH2_URL = os.environ.get('AUTH2_URL', 'https://auth2.dbca.wa.gov.au/healthcheck')
 AUTH2_STATUS_URL = os.environ.get('AUTH2_URL', 'https://auth2.dbca.wa.gov.au/status')
-
 USER_SSO = os.environ.get('USER_SSO', 'asi@dbca.wa.gov.au')
 PASS_SSO = os.environ.get('PASS_SSO', 'password')
-# Maximum allowable delay for tracking points (minutes).
-TRACKING_POINTS_MAX_DELAY = int(os.environ.get('TRACKING_POINTS_MAX_DELAY', 30))
-# Maximum allowable delay for aircraft tracking (minutes, optional).
-AIRCRAFT_TRACKING_MAX_DELAY = int(os.environ.get('AIRCRAFT_TRACKING_MAX_DELAY', 0))
+TRACKING_POINTS_MAX_DELAY = int(os.environ.get('TRACKING_POINTS_MAX_DELAY', 30))  # Minutes
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
 
 
