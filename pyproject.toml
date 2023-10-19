@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "healthcheck"
-version = "1.1.10"
+version = "1.1.11"
 description = "Internal service endpoint health check for Spatial Support System"
 authors = ["ASI <asi@dbca.wa.gov.au>"]
 
