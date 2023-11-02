@@ -41,6 +41,7 @@ AUTH2_STATUS_URL = os.environ.get('AUTH2_URL', 'https://auth2.dbca.wa.gov.au/sta
 USER_SSO = os.environ.get('USER_SSO', 'asi@dbca.wa.gov.au')
 PASS_SSO = os.environ.get('PASS_SSO', 'password')
 TRACKING_POINTS_MAX_DELAY = int(os.environ.get('TRACKING_POINTS_MAX_DELAY', 30))  # Minutes
+DBCA_GOING_BUSHFIRES_URL = os.environ.get('DBCA_GOING_BUSHFIRES_URL', None)
 AWST_TZ = tzoffset('AWST', 28800)  # AWST timezone offset.
 
 
@@ -76,46 +77,77 @@ def healthcheck_json():
         'auth2_status': None
     }
 
-    trackingdata = requests.get(SSS_DEVICES_URL, auth=(USER_SSO, PASS_SSO)).json()
-    t = parse(trackingdata["objects"][0]["seen"])
-    d['latest_point'] = t.astimezone(AWST_TZ).isoformat()
-    d['latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
-    if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-        d['success'] = False
+    session = requests.Session()
+    session.auth = (USER_SSO, PASS_SSO)
 
-    trackingdata = requests.get(SSS_IRIDIUM_URL, auth=(USER_SSO, PASS_SSO)).json()
-    t = parse(trackingdata["objects"][0]["seen"])
-    d['iridium_latest_point'] = t.astimezone(AWST_TZ).isoformat()
-    d['iridium_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
-    if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-        d['success'] = False
-
-    trackingdata = requests.get(SSS_TRACPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
-    t = parse(trackingdata["objects"][0]["seen"])
-    d['tracplus_latest_point'] = t.astimezone(AWST_TZ).isoformat()
-    d['tracplus_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
-
-    trackingdata = requests.get(SSS_DFES_URL, auth=(USER_SSO, PASS_SSO)).json()
-    t = parse(trackingdata["objects"][0]["seen"])
-    d['dfes_latest_point'] = t.astimezone(AWST_TZ).isoformat()
-    d['dfes_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
-
-    trackingdata = requests.get(SSS_FLEETCARE_URL, auth=(USER_SSO, PASS_SSO)).json()
-    t = parse(trackingdata["objects"][0]["seen"])
-    d['fleetcare_latest_point'] = t.astimezone(AWST_TZ).isoformat()
-    d['fleetcare_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
-    if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+    try:
+        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        t = parse(trackingdata["objects"][0]["seen"])
+        d['latest_point'] = t.astimezone(AWST_TZ).isoformat()
+        d['latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            d['success'] = False
+    except Exception as e:
         d['success'] = False
 
     try:
-        resp = requests.get(CSW_API, auth=(USER_SSO, PASS_SSO)).json()
-        d['csw_catalogue_count'] = len(resp)
+        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        t = parse(trackingdata["objects"][0]["seen"])
+        d['iridium_latest_point'] = t.astimezone(AWST_TZ).isoformat()
+        d['iridium_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            d['success'] = False
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        trackingdata = session.get(SSS_TRACPLUS_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        t = parse(trackingdata["objects"][0]["seen"])
+        d['tracplus_latest_point'] = t.astimezone(AWST_TZ).isoformat()
+        d['tracplus_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        trackingdata = session.get(SSS_DFES_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        t = parse(trackingdata["objects"][0]["seen"])
+        d['dfes_latest_point'] = t.astimezone(AWST_TZ).isoformat()
+        d['dfes_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        trackingdata = session.get(SSS_FLEETCARE_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        t = parse(trackingdata["objects"][0]["seen"])
+        d['fleetcare_latest_point'] = t.astimezone(AWST_TZ).isoformat()
+        d['fleetcare_latest_point_delay'] = trackingdata["objects"][0]["age_minutes"]
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            d['success'] = False
+    except Exception as e:
+        d['success'] = False
+
+    try:
+        resp = session.get(CSW_API)
+        resp.raise_for_status()
+        j = resp.json()
+        d['csw_catalogue_count'] = len(j)
     except Exception as e:
         d['success'] = False
 
     try:
         url = KMI_URL + '/wfs'
         params = {'service': 'wfs', 'version': '1.1.0', 'request': 'GetFeature', 'typeNames': 'public:todays_burns', 'resultType': 'hits'}
+        # Send an anonymous request.
         resp = requests.get(url, params=params)
         if not resp.status_code == 200:
             resp.raise_for_status()
@@ -127,6 +159,7 @@ def healthcheck_json():
 
     try:
         url = KMI_URL + '/public/gwc/service/wmts'
+        # Send an anonymous request.
         resp = requests.get(url, params={'request': 'getcapabilities'})
         if not resp.status_code == 200:
             resp.raise_for_status()
@@ -138,13 +171,24 @@ def healthcheck_json():
         d['success'] = False
 
     try:
-        resp = requests.get(BFRS_URL, auth=(USER_SSO, PASS_SSO)).json()
+        resp = session.get(BFRS_URL)
+        resp.raise_for_status()
+        j = resp.json()
         d['bfrs_profile_api_endpoint'] = True
     except Exception as e:
         d['success'] = False
 
+    if DBCA_GOING_BUSHFIRES_URL:
+        try:
+            resp = session.get(DBCA_GOING_BUSHFIRES_URL)
+            resp.raise_for_status()
+            d['dbca_going_bushfires_layer'] = True
+        except Exception as e:
+            d['dbca_going_bushfires_layer'] = False
+            d['success'] = False
+
     try:
-        resp = requests.get(AUTH2_STATUS_URL, auth=(USER_SSO, PASS_SSO))
+        resp = session.get(AUTH2_STATUS_URL)
         resp.raise_for_status()
         j = resp.json()
         d["auth2_status"] = j["healthy"]
@@ -161,10 +205,14 @@ def healthcheck():
     now = datetime.now().astimezone(AWST_TZ)
     output = "Server time: {}<br><br>".format(now.isoformat())
     success = True
+    session = requests.Session()
+    session.auth = (USER_SSO, PASS_SSO)
 
     # All resource point tracking
     try:
-        trackingdata = requests.get(SSS_DEVICES_URL, auth=(USER_SSO, PASS_SSO)).json()
+        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
         # Output latest point
         t = parse(trackingdata["objects"][0]["seen"])
         output += "Latest tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
@@ -182,7 +230,9 @@ def healthcheck():
 
     # Iridium tracking
     try:
-        trackingdata = requests.get(SSS_IRIDIUM_URL, auth=(USER_SSO, PASS_SSO)).json()
+        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
         # Output latest point
         t = parse(trackingdata["objects"][0]["seen"])
         output += "Latest Iridium tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
@@ -200,7 +250,9 @@ def healthcheck():
 
     # Tracplus Tracking
     try:
-        trackingdata = requests.get(SSS_TRACPLUS_URL, auth=(USER_SSO, PASS_SSO)).json()
+        trackingdata = session.get(SSS_TRACPLUS_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
         # Output latest point
         t = parse(trackingdata["objects"][0]["seen"])
         output += "Latest Tracplus tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
@@ -212,7 +264,9 @@ def healthcheck():
 
     # DFES Tracking
     try:
-        trackingdata = requests.get(SSS_DFES_URL, auth=(USER_SSO, PASS_SSO)).json()
+        trackingdata = session.get(SSS_DFES_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
         # Output latest point
         t = parse(trackingdata["objects"][0]["seen"])
         output += "Latest DFES tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
@@ -224,7 +278,9 @@ def healthcheck():
 
     # Fleetcare Tracking
     try:
-        trackingdata = requests.get(SSS_FLEETCARE_URL, auth=(USER_SSO, PASS_SSO)).json()
+        trackingdata = session.get(SSS_FLEETCARE_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
         # Output latest point
         t = parse(trackingdata["objects"][0]["seen"])
         output += "Latest Fleetcare tracking point (AWST): {}<br>".format(t.astimezone(AWST_TZ).isoformat())
@@ -242,7 +298,9 @@ def healthcheck():
 
     # CSW catalogue API endpoint
     try:
-        resp = requests.get(CSW_API, auth=(USER_SSO, PASS_SSO)).json()
+        resp = session.get(CSW_API)
+        resp.raise_for_status()
+        resp = resp.json()
         output += 'CSW spatial catalogue for SSS: {} layers<br><br>'.format(len(resp))
     except Exception as e:
         success = False
@@ -252,9 +310,9 @@ def healthcheck():
     try:
         url = KMI_URL + '/wfs'
         params = {'service': 'wfs', 'version': '1.1.0', 'request': 'GetFeature', 'typeNames': 'public:todays_burns', 'resultType': 'hits'}
+        # Send an anonymous request, as KMI doesn't support basic auth nicely.
         resp = requests.get(url, params=params)
-        if not resp.status_code == 200:
-            resp.raise_for_status()
+        resp.raise_for_status()
         root = ET.fromstring(resp.content)
         d = {i[0]: i[1] for i in root.items()}
         output += "Today's burns count: {}<br><br>".format(d['numberOfFeatures'])
@@ -265,9 +323,10 @@ def healthcheck():
     # KMI WMTS endpoint
     try:
         url = KMI_URL + '/public/gwc/service/wmts'
-        resp = requests.get(url, params={'request': 'getcapabilities'})
-        if not resp.status_code == 200:
-            resp.raise_for_status()
+        params = {'request': 'getcapabilities'}
+        # Send an anonymous request, as KMI doesn't support basic auth nicely.
+        resp = requests.get(url, params=params)
+        resp.raise_for_status()
         root = ET.fromstring(resp.content)
         ns = {'wmts': 'http://www.opengis.net/wmts/1.0', 'ows': 'http://www.opengis.net/ows/1.1'}
         layers = root.findall('.//wmts:Layer', ns)
@@ -278,15 +337,24 @@ def healthcheck():
 
     # BFRS profile API endpoint
     try:
-        resp = requests.get(BFRS_URL, auth=(USER_SSO, PASS_SSO)).json()
+        resp = session.get(BFRS_URL)
+        resp.raise_for_status()
         output += 'BFRS profile API endpoint: OK<br><br>'
     except Exception as e:
         success = False
         output += "BFRS profile API endpoint returned an error: {}<br><br>".format(e)
 
+    if DBCA_GOING_BUSHFIRES_URL:
+        try:
+            resp = session.get(DBCA_GOING_BUSHFIRES_URL)
+            resp.raise_for_status()
+            output += 'DBCA Going Bushfires layer (KMI): OK<br><br>'
+        except Exception as e:
+            output += f'DBCA Going Bushfires layer (KMI) returned an error: {e}<br><br>'
+
     # AUTH2 healthcheck
     try:
-        resp = requests.get(AUTH2_URL, auth=(USER_SSO, PASS_SSO))
+        resp = session.get(AUTH2_URL)
         resp.raise_for_status()
         output += 'AUTH2 status: OK<br><br>'
     except Exception as e:
