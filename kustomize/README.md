@@ -5,10 +5,7 @@ Declarative management of SSS Healthcheck objects using Kustomize.
 # How to use
 
 Within an overlay directory, create a `.env` file to contain required secret
-values in the format KEY=value (i.e. `overlays/uat/.env`). Required values:
-
-    DATABASE_URL=value
-    SECRET_KEY=value
+values in the format KEY=value (i.e. `overlays/uat/.env`).
 
 Review the built resource output using `kustomize`:
 

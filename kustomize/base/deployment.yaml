@@ -10,6 +10,7 @@ spec:
     spec:
       containers:
       - name: healthcheck
+        image: ghcr.io/dbca-wa/healthcheck
         env:
         - name: TZ
           value: "Australia/Perth"
