@@ -15,5 +15,50 @@ spec:
     spec:
       containers:
       - name: healthcheck
-        image: ghcr.io/dbca-wa/healthcheck:1.1.10
         imagePullPolicy: IfNotPresent
+        env:
+        - name: AIRCRAFT_TRACKING_MAX_DELAY
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: AIRCRAFT_TRACKING_MAX_DELAY
+        - name: BFRS_URL
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: BFRS_URL
+        - name: CSW_API
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: CSW_API
+        - name: DBCA_GOING_BUSHFIRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DBCA_GOING_BUSHFIRES_URL
+        - name: KMI_URL
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: KMI_URL
+        - name: RT_URL
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: RT_URL
+        - name: USER_SSO
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: USER_SSO
+        - name: PASS_SSO
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: PASS_SSO
+        - name: TRACKING_POINTS_MAX_DELAY
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: TRACKING_POINTS_MAX_DELAY
