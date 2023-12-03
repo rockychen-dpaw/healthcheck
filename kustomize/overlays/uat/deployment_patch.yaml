@@ -17,11 +17,6 @@ spec:
       - name: healthcheck
         imagePullPolicy: Always
         env:
-        - name: AIRCRAFT_TRACKING_MAX_DELAY
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-uat
-              key: AIRCRAFT_TRACKING_MAX_DELAY
         - name: BFRS_URL
           valueFrom:
             secretKeyRef:
