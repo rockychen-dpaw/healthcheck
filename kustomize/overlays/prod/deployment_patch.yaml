@@ -27,11 +27,6 @@ spec:
             secretKeyRef:
               name: healthcheck-env-prod
               key: CSW_API
-        - name: DBCA_GOING_BUSHFIRES_URL
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DBCA_GOING_BUSHFIRES_URL
         - name: KMI_URL
           valueFrom:
             secretKeyRef:
@@ -57,3 +52,78 @@ spec:
             secretKeyRef:
               name: healthcheck-env-prod
               key: TRACKING_POINTS_MAX_DELAY
+        - name: DBCA_GOING_BUSHFIRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DBCA_GOING_BUSHFIRES_URL
+        - name: DBCA_CONTROL_LINES_URL
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DBCA_CONTROL_LINES_URL
+        - name: DFES_GOING_BUSHFIRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DFES_GOING_BUSHFIRES_URL
+        - name: ALL_CURRENT_HOTSPOTS
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: ALL_CURRENT_HOTSPOTS
+        - name: LIGHTNING_24H
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: LIGHTNING_24H
+        - name: LIGHTNING_24_48H
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: LIGHTNING_24_48H
+        - name: LIGHTNING_48_72H
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: LIGHTNING_48_72H
+        - name: FUEL_AGE_1_6Y
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: FUEL_AGE_1_6Y
+        - name: FUEL_AGE_NONFOREST_1_6Y
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: FUEL_AGE_NONFOREST_1_6Y
+        - name: COG_BASEMAP
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: COG_BASEMAP
+        - name: STATE_BASEMAP
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: STATE_BASEMAP
+        - name: DBCA_BURN_PROGRAM
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DBCA_BURN_PROGRAM
+        - name: DAILY_ACTIVE_BURNS
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DAILY_ACTIVE_BURNS
+        - name: DBCA_LANDS_WATERS
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DBCA_LANDS_WATERS
+        - name: DBCA_LANDS_WATERS_INTEREST
+          valueFrom:
+            secretKeyRef:
+              name: healthcheck-env-prod
+              key: DBCA_LANDS_WATERS_INTEREST
