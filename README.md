@@ -20,13 +20,8 @@ Manage new or updating project dependencies with Poetry also, like so:
 
 # Environment variables
 
-This project uses **django-confy** to set environment variables (in a `.env` file).
-The following variables are required for the project to run (others have
-default values):
-
-    RT_URL=https://resourcetracking.dbca.wa.gov.au
-    USER_SSO=some.user@dbca.wa.gov.au
-    PASS_SSO=password
+This project uses **python-dotenv** to set environment variables (in a `.env` file).
+Most settings have default values; check `status.py` for required variables.
 
 # Running
 
@@ -43,6 +38,6 @@ To build a new Docker image from the `Dockerfile`:
 
     docker image build -t ghcr.io/dbca-wa/healthcheck .
 
-To run a Docker container locally, publishing port 8080 to a different local port:
+To run a Docker container locally, publishing container port 8080 to a local port:
 
-    docker container run --rm --publish 8211:8080 --env-file .env ghcr.io/dbca-wa/healthcheck
+    docker container run --rm --publish 8080:8080 --env-file .env ghcr.io/dbca-wa/healthcheck
