@@ -26,19 +26,19 @@ spec:
             path: /liveness
             port: 8080
             scheme: HTTP
-          initialDelaySeconds: 3
-          periodSeconds: 3
+          periodSeconds: 15
+          successThreshold: 1
           failureThreshold: 3
-          timeoutSeconds: 2
+          timeoutSeconds: 10
         readinessProbe:
           httpGet:
             path: /readiness
             port: 8080
             scheme: HTTP
-          initialDelaySeconds: 3
-          periodSeconds: 3
+          periodSeconds: 15
+          successThreshold: 1
           failureThreshold: 3
-          timeoutSeconds: 2
+          timeoutSeconds: 10
         securityContext:
           runAsNonRoot: true
           privileged: false
@@ -47,4 +47,12 @@ spec:
             drop:
               - ALL
           readOnlyRootFilesystem: true
+        volumeMounts:
+          - mountPath: /tmp
+            name: tmpfs-ram
+      volumes:
+        - name: tmpfs-ram
+          emptyDir:
+            medium: "Memory"
       restartPolicy: Always
+      terminationGracePeriodSeconds: 180

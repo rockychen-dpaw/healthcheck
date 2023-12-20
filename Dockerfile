@@ -12,7 +12,7 @@ RUN apt-get update -y \
 # Install Python libs using Poetry.
 FROM builder_base_healthcheck as python_libs_healthcheck
 WORKDIR /app
-ARG POETRY_VERSION=1.6.1
+ARG POETRY_VERSION=1.7.1
 RUN pip install poetry=="${POETRY_VERSION}"
 COPY poetry.lock pyproject.toml ./
 RUN poetry config virtualenvs.create false \
@@ -27,9 +27,9 @@ RUN groupadd -g "${GID}" appuser \
 
 # Install the project.
 FROM python_libs_healthcheck
-COPY status.py ./
+COPY gunicorn.py status.py ./
 COPY static ./static
 
 USER ${UID}
 EXPOSE 8080
-CMD ["python", "status.py"]
+CMD ["gunicorn", "status:application", "--config", "gunicorn.py"]

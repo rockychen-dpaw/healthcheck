@@ -344,8 +344,8 @@ def healthcheck():
 def healthcheck_json():
     d = healthcheck()
     response.content_type = "application/json"
-    # Mark response as 'never cache'.
-    response.set_header("Cache-Control", "private, max-age=0")
+    # Mark response as "cache for 60 seconds".
+    response.set_header("Cache-Control", "max-age=60")
     return json.dumps(d)
 
 
@@ -514,7 +514,8 @@ def healthcheck_http():
         output += "<strong>Finished checks, something is wrong =(</strong>"
     output += "</p>"
 
-    response.set_header("Cache-Control", "private, max-age=0")
+    # Mark response as "cache for 60 seconds".
+    response.set_header("Cache-Control", "max-age=60")
     return OUTPUT_TEMPLATE.format(output)
 
 
