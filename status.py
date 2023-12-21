@@ -182,7 +182,11 @@ def healthcheck():
             url = f"{KMI_URL}/{DBCA_GOING_BUSHFIRES_URL}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["dbca_going_bushfires_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["dbca_going_bushfires_layer"] = False
+                d["success"] = False
+            else:
+                d["dbca_going_bushfires_layer"] = True
         except Exception as e:
             d["dbca_going_bushfires_layer"] = False
             d["success"] = False
@@ -192,7 +196,11 @@ def healthcheck():
             url = f"{KMI_URL}/{DBCA_CONTROL_LINES_URL}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["dbca_control_lines_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["dbca_control_lines_layer"] = False
+                d["success"] = False
+            else:
+                d["dbca_control_lines_layer"] = True
         except Exception as e:
             d["dbca_control_lines_layer"] = False
             d["success"] = False
@@ -202,7 +210,11 @@ def healthcheck():
             url = f"{KMI_URL}/{DFES_GOING_BUSHFIRES_URL}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["dfes_going_bushfires_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["dfes_going_bushfires_layer"] = False
+                d["success"] = False
+            else:
+                d["dfes_going_bushfires_layer"] = True
         except Exception as e:
             d["dfes_going_bushfires_layer"] = False
             d["success"] = False
@@ -212,7 +224,11 @@ def healthcheck():
             url = f"{KMI_URL}/{ALL_CURRENT_HOTSPOTS}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["all_current_hotspots_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["all_current_hotspots_layer"] = False
+                d["success"] = False
+            else:
+                d["all_current_hotspots_layer"] = True
         except Exception as e:
             d["all_current_hotspots_layer"] = False
             d["success"] = False
@@ -222,7 +238,11 @@ def healthcheck():
             url = f"{KMI_URL}/{LIGHTNING_24H}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["lightning_24h_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["lightning_24h_layer"] = False
+                d["success"] = False
+            else:
+                d["lightning_24h_layer"] = True
         except Exception as e:
             d["lightning_24h_layer"] = False
             d["success"] = False
@@ -232,7 +252,11 @@ def healthcheck():
             url = f"{KMI_URL}/{LIGHTNING_24_48H}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["lightning_24_48h_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["lightning_24_48h_layer"] = False
+                d["success"] = False
+            else:
+                d["lightning_24_48h_layer"] = True
         except Exception as e:
             d["lightning_24_48h_layer"] = False
             d["success"] = False
@@ -242,7 +266,11 @@ def healthcheck():
             url = f"{KMI_URL}/{LIGHTNING_48_72H}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["lightning_48_72h_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["lightning_48_72h_layer"] = False
+                d["success"] = False
+            else:
+                d["lightning_48_72h_layer"] = True
         except Exception as e:
             d["lightning_48_72h_layer"] = False
             d["success"] = False
@@ -252,7 +280,11 @@ def healthcheck():
             url = f"{KMI_URL}/{FUEL_AGE_1_6Y}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["fuel_age_1_6y_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["fuel_age_1_6y_layer"] = False
+                d["success"] = False
+            else:
+                d["fuel_age_1_6y_layer"] = True
         except Exception as e:
             d["fuel_age_1_6y_layer"] = False
             d["success"] = False
@@ -262,7 +294,11 @@ def healthcheck():
             url = f"{KMI_URL}/{FUEL_AGE_NONFOREST_1_6Y}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["fuel_age_nonforest_1_6y_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["fuel_age_nonforest_1_6y_layer"] = False
+                d["success"] = False
+            else:
+                d["fuel_age_nonforest_1_6y_layer"] = True
         except Exception as e:
             d["fuel_age_nonforest_1_6y_layer"] = False
             d["success"] = False
@@ -272,7 +308,11 @@ def healthcheck():
             url = f"{KMI_URL}/{COG_BASEMAP}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["cog_basemap_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["cog_basemap_layer"] = False
+                d["success"] = False
+            else:
+                d["cog_basemap_layer"] = True
         except Exception as e:
             d["cog_basemap_layer"] = False
             d["success"] = False
@@ -282,7 +322,11 @@ def healthcheck():
             url = f"{KMI_URL}/{STATE_BASEMAP}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["state_basemap_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["state_basemap_layer"] = False
+                d["success"] = False
+            else:
+                d["state_basemap_layer"] = True
         except Exception as e:
             d["state_basemap_layer"] = False
             d["success"] = False
@@ -292,7 +336,11 @@ def healthcheck():
             url = f"{KMI_URL}/{DBCA_BURN_PROGRAM}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["dbca_burn_program_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["dbca_burn_program_layer"] = False
+                d["success"] = False
+            else:
+                d["dbca_burn_program_layer"] = True
         except Exception as e:
             d["dbca_burn_program_layer"] = False
             d["success"] = False
@@ -303,7 +351,11 @@ def healthcheck():
             # Don't use an authenticated session to download public layers.
             resp = requests.get(url)
             resp.raise_for_status()
-            d["daily_active_burns_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["daily_active_burns_layer"] = False
+                d["success"] = False
+            else:
+                d["daily_active_burns_layer"] = True
         except Exception as e:
             d["daily_active_burns_layer"] = False
             d["success"] = False
@@ -314,7 +366,11 @@ def healthcheck():
             # Don't use an authenticated session to download public layers.
             resp = requests.get(url)
             resp.raise_for_status()
-            d["dbca_lands_waters_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["dbca_lands_waters_layer"] = False
+                d["success"] = False
+            else:
+                d["dbca_lands_waters_layer"] = True
         except Exception as e:
             d["dbca_lands_waters_layer"] = False
             d["success"] = False
@@ -324,7 +380,11 @@ def healthcheck():
             url = f"{KMI_URL}/{DBCA_LANDS_WATERS_INTEREST}"
             resp = session.get(url)
             resp.raise_for_status()
-            d["dbca_lands_waters_interest_layer"] = True
+            if "ServiceExceptionReport" in str(resp.content):
+                d["dbca_lands_waters_interest_layer"] = False
+                d["success"] = False
+            else:
+                d["dbca_lands_waters_interest_layer"] = True
         except Exception as e:
             d["dbca_lands_waters_interest_layer"] = False
             d["success"] = False
