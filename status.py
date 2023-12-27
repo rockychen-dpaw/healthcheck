@@ -27,6 +27,7 @@ OUTPUT_TEMPLATE = """<!DOCTYPE html>
 {}
 </body>
 </html>"""
+CACHE_RESPONSE = os.environ.get("CACHE_RESPONSE", True)
 RT_URL = os.environ.get("RT_URL", "https://resourcetracking.dbca.wa.gov.au")
 SSS_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
 SSS_IRIDIUM_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json"
@@ -43,21 +44,21 @@ AUTH2_STATUS_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/sta
 USER_SSO = os.environ.get("USER_SSO", "asi@dbca.wa.gov.au")
 PASS_SSO = os.environ.get("PASS_SSO", "password")
 TRACKING_POINTS_MAX_DELAY = int(os.environ.get("TRACKING_POINTS_MAX_DELAY", 30))  # Minutes
-DBCA_GOING_BUSHFIRES_URL = os.environ.get("DBCA_GOING_BUSHFIRES_URL", None)
-DBCA_CONTROL_LINES_URL = os.environ.get("DBCA_CONTROL_LINES_URL", None)
-DFES_GOING_BUSHFIRES_URL = os.environ.get("DFES_GOING_BUSHFIRES_URL", None)
-ALL_CURRENT_HOTSPOTS = os.environ.get("ALL_CURRENT_HOTSPOTS", None)
-LIGHTNING_24H = os.environ.get("LIGHTNING_24H", None)
-LIGHTNING_24_48H = os.environ.get("LIGHTNING_24_48H", None)
-LIGHTNING_48_72H = os.environ.get("LIGHTNING_48_72H", None)
-FUEL_AGE_1_6Y = os.environ.get("FUEL_AGE_1_6Y", None)
-FUEL_AGE_NONFOREST_1_6Y = os.environ.get("FUEL_AGE_NONFOREST_1_6Y", None)
-COG_BASEMAP = os.environ.get("COG_BASEMAP", None)
-STATE_BASEMAP = os.environ.get("STATE_BASEMAP", None)
-DBCA_BURN_PROGRAM = os.environ.get("DBCA_BURN_PROGRAM", None)
-DAILY_ACTIVE_BURNS = os.environ.get("DAILY_ACTIVE_BURNS", None)
-DBCA_LANDS_WATERS = os.environ.get("DBCA_LANDS_WATERS", None)
-DBCA_LANDS_WATERS_INTEREST = os.environ.get("DBCA_LANDS_WATERS_INTEREST", None)
+DBCA_GOING_BUSHFIRES_LAYER = os.environ.get("DBCA_GOING_BUSHFIRES_LAYER", None)
+DBCA_CONTROL_LINES_LAYER = os.environ.get("DBCA_CONTROL_LINES_LAYER", None)
+DFES_GOING_BUSHFIRES_LAYER = os.environ.get("DFES_GOING_BUSHFIRES_LAYER", None)
+ALL_CURRENT_HOTSPOTS_LAYER = os.environ.get("ALL_CURRENT_HOTSPOTS_LAYER", None)
+LIGHTNING_24H_LAYER = os.environ.get("LIGHTNING_24H_LAYER", None)
+LIGHTNING_24_48H_LAYER = os.environ.get("LIGHTNING_24_48H_LAYER", None)
+LIGHTNING_48_72H_LAYER = os.environ.get("LIGHTNING_48_72H_LAYER", None)
+FUEL_AGE_1_6Y_LAYER = os.environ.get("FUEL_AGE_1_6Y_LAYER", None)
+FUEL_AGE_NONFOREST_1_6Y_LAYER = os.environ.get("FUEL_AGE_NONFOREST_1_6Y_LAYER", None)
+COG_BASEMAP_LAYER = os.environ.get("COG_BASEMAP_LAYER", None)
+STATE_BASEMAP_LAYER = os.environ.get("STATE_BASEMAP_LAYER", None)
+DBCA_BURN_PROGRAM_LAYER = os.environ.get("DBCA_BURN_PROGRAM_LAYER", None)
+DAILY_ACTIVE_BURNS_LAYER = os.environ.get("DAILY_ACTIVE_BURNS_LAYER", None)
+DBCA_LANDS_WATERS_LAYER = os.environ.get("DBCA_LANDS_WATERS_LAYER", None)
+DBCA_LANDS_WATERS_INTEREST_LAYER = os.environ.get("DBCA_LANDS_WATERS_INTEREST_LAYER", None)
 
 
 @app.route("/readiness")
@@ -91,6 +92,8 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
+        d["latest_point"] = None
+        d["latest_point_delay"] = None
         d["success"] = False
 
     try:
@@ -103,6 +106,8 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
+        d["iridium_latest_point"] = None
+        d["iridium_latest_point_delay"] = None
         d["success"] = False
 
     try:
@@ -113,6 +118,8 @@ def healthcheck():
         d["tracplus_latest_point"] = t.isoformat()
         d["tracplus_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
     except Exception as e:
+        d["tracplus_latest_point"] = None
+        d["tracplus_latest_point_delay"] = None
         d["success"] = False
 
     try:
@@ -123,6 +130,8 @@ def healthcheck():
         d["dfes_latest_point"] = t.isoformat()
         d["dfes_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
     except Exception as e:
+        d["dfes_latest_point"] = None
+        d["dfes_latest_point_delay"] = None
         d["success"] = False
 
     try:
@@ -135,6 +144,8 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
+        d["fleetcare_latest_point"] = None
+        d["fleetcare_latest_point_delay"] = None
         d["success"] = False
 
     try:
@@ -143,22 +154,23 @@ def healthcheck():
         j = resp.json()
         d["csw_catalogue_count"] = len(j)
     except Exception as e:
+        d["csw_catalogue_count"] = None
         d["success"] = False
 
     try:
+        # Public service, so we need to send an anonymous request.
         params = {"service": "wfs", "version": "1.1.0", "request": "GetFeature", "typeNames": "public:todays_burns", "resultType": "hits"}
-        # Send an anonymous request.
         resp = requests.get(KMI_WFS_URL, params=params)
-        if not resp.status_code == 200:
-            resp.raise_for_status()
+        resp.raise_for_status()
         root = ET.fromstring(resp.content)
         resp_d = {i[0]: i[1] for i in root.items()}
         d["todays_burns_count"] = int(resp_d["numberOfFeatures"])
     except Exception as e:
+        d["todays_burns_count"] = None
         d["success"] = False
 
     try:
-        # Send an anonymous request.
+        # Public service, so we need to send an anonymous request.
         resp = requests.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
         if not resp.status_code == 200:
             resp.raise_for_status()
@@ -167,6 +179,7 @@ def healthcheck():
         layers = root.findall(".//wmts:Layer", ns)
         d["kmi_wmts_layer_count"] = len(layers)
     except Exception as e:
+        d["kmi_wmts_layer_count"] = None
         d["success"] = False
 
     try:
@@ -175,219 +188,58 @@ def healthcheck():
         j = resp.json()
         d["bfrs_profile_api_endpoint"] = True
     except Exception as e:
+        d["bfrs_profile_api_endpoint"] = None
         d["success"] = False
 
-    if DBCA_GOING_BUSHFIRES_URL:
-        try:
-            url = f"{KMI_URL}/{DBCA_GOING_BUSHFIRES_URL}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["dbca_going_bushfires_layer"] = False
-                d["success"] = False
-            else:
-                d["dbca_going_bushfires_layer"] = True
-        except Exception as e:
-            d["dbca_going_bushfires_layer"] = False
-            d["success"] = False
+    # Common parameters to send with every GetMap request to KMI Geoserver.
+    kmi_params = {
+        "service": "WMS",
+        "version": "1.1.0",
+        "request": "GetMap",
+        "bbox": "109.3,-40.4,132.6,-6.7",
+        "width": "552",
+        "height": "768",
+        "srs": "EPSG:4326",
+        "format": "image/jpeg",
+        "layers": None,
+    }
 
-    if DBCA_CONTROL_LINES_URL:
-        try:
-            url = f"{KMI_URL}/{DBCA_CONTROL_LINES_URL}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["dbca_control_lines_layer"] = False
+    for kmi_layer in [
+        DBCA_GOING_BUSHFIRES_LAYER,
+        DBCA_CONTROL_LINES_LAYER,
+        DFES_GOING_BUSHFIRES_LAYER,
+        ALL_CURRENT_HOTSPOTS_LAYER,
+        LIGHTNING_24H_LAYER,
+        LIGHTNING_24_48H_LAYER,
+        LIGHTNING_48_72H_LAYER,
+        FUEL_AGE_1_6Y_LAYER,
+        FUEL_AGE_NONFOREST_1_6Y_LAYER,
+        COG_BASEMAP_LAYER,
+        STATE_BASEMAP_LAYER,
+        DBCA_BURN_PROGRAM_LAYER,
+        DAILY_ACTIVE_BURNS_LAYER,
+        DBCA_LANDS_WATERS_LAYER,
+        DBCA_LANDS_WATERS_INTEREST_LAYER,
+    ]:
+        if kmi_layer:
+            kmi_params["layers"] = kmi_layer
+            prefix = kmi_layer.split(":")[0]
+            path = f"{prefix}/wms"
+            try:
+                url = f"{KMI_URL}/{path}"
+                if prefix == "public":
+                    resp = requests.get(url, params=kmi_params)
+                else:
+                    resp = session.get(url, params=kmi_params)
+                resp.raise_for_status()
+                if "ServiceExceptionReport" in str(resp.content):
+                    d[kmi_layer] = False
+                    d["success"] = False
+                else:
+                    d[kmi_layer] = True
+            except Exception as e:
+                d[kmi_layer] = False
                 d["success"] = False
-            else:
-                d["dbca_control_lines_layer"] = True
-        except Exception as e:
-            d["dbca_control_lines_layer"] = False
-            d["success"] = False
-
-    if DFES_GOING_BUSHFIRES_URL:
-        try:
-            url = f"{KMI_URL}/{DFES_GOING_BUSHFIRES_URL}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["dfes_going_bushfires_layer"] = False
-                d["success"] = False
-            else:
-                d["dfes_going_bushfires_layer"] = True
-        except Exception as e:
-            d["dfes_going_bushfires_layer"] = False
-            d["success"] = False
-
-    if ALL_CURRENT_HOTSPOTS:
-        try:
-            url = f"{KMI_URL}/{ALL_CURRENT_HOTSPOTS}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["all_current_hotspots_layer"] = False
-                d["success"] = False
-            else:
-                d["all_current_hotspots_layer"] = True
-        except Exception as e:
-            d["all_current_hotspots_layer"] = False
-            d["success"] = False
-
-    if LIGHTNING_24H:
-        try:
-            url = f"{KMI_URL}/{LIGHTNING_24H}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["lightning_24h_layer"] = False
-                d["success"] = False
-            else:
-                d["lightning_24h_layer"] = True
-        except Exception as e:
-            d["lightning_24h_layer"] = False
-            d["success"] = False
-
-    if LIGHTNING_24_48H:
-        try:
-            url = f"{KMI_URL}/{LIGHTNING_24_48H}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["lightning_24_48h_layer"] = False
-                d["success"] = False
-            else:
-                d["lightning_24_48h_layer"] = True
-        except Exception as e:
-            d["lightning_24_48h_layer"] = False
-            d["success"] = False
-
-    if LIGHTNING_48_72H:
-        try:
-            url = f"{KMI_URL}/{LIGHTNING_48_72H}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["lightning_48_72h_layer"] = False
-                d["success"] = False
-            else:
-                d["lightning_48_72h_layer"] = True
-        except Exception as e:
-            d["lightning_48_72h_layer"] = False
-            d["success"] = False
-
-    if FUEL_AGE_1_6Y:
-        try:
-            url = f"{KMI_URL}/{FUEL_AGE_1_6Y}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["fuel_age_1_6y_layer"] = False
-                d["success"] = False
-            else:
-                d["fuel_age_1_6y_layer"] = True
-        except Exception as e:
-            d["fuel_age_1_6y_layer"] = False
-            d["success"] = False
-
-    if FUEL_AGE_NONFOREST_1_6Y:
-        try:
-            url = f"{KMI_URL}/{FUEL_AGE_NONFOREST_1_6Y}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["fuel_age_nonforest_1_6y_layer"] = False
-                d["success"] = False
-            else:
-                d["fuel_age_nonforest_1_6y_layer"] = True
-        except Exception as e:
-            d["fuel_age_nonforest_1_6y_layer"] = False
-            d["success"] = False
-
-    if COG_BASEMAP:
-        try:
-            url = f"{KMI_URL}/{COG_BASEMAP}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["cog_basemap_layer"] = False
-                d["success"] = False
-            else:
-                d["cog_basemap_layer"] = True
-        except Exception as e:
-            d["cog_basemap_layer"] = False
-            d["success"] = False
-
-    if STATE_BASEMAP:
-        try:
-            url = f"{KMI_URL}/{STATE_BASEMAP}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["state_basemap_layer"] = False
-                d["success"] = False
-            else:
-                d["state_basemap_layer"] = True
-        except Exception as e:
-            d["state_basemap_layer"] = False
-            d["success"] = False
-
-    if DBCA_BURN_PROGRAM:
-        try:
-            url = f"{KMI_URL}/{DBCA_BURN_PROGRAM}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["dbca_burn_program_layer"] = False
-                d["success"] = False
-            else:
-                d["dbca_burn_program_layer"] = True
-        except Exception as e:
-            d["dbca_burn_program_layer"] = False
-            d["success"] = False
-
-    if DAILY_ACTIVE_BURNS:
-        try:
-            url = f"{KMI_URL}/{DAILY_ACTIVE_BURNS}"
-            # Don't use an authenticated session to download public layers.
-            resp = requests.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["daily_active_burns_layer"] = False
-                d["success"] = False
-            else:
-                d["daily_active_burns_layer"] = True
-        except Exception as e:
-            d["daily_active_burns_layer"] = False
-            d["success"] = False
-
-    if DBCA_LANDS_WATERS:
-        try:
-            url = f"{KMI_URL}/{DBCA_LANDS_WATERS}"
-            # Don't use an authenticated session to download public layers.
-            resp = requests.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["dbca_lands_waters_layer"] = False
-                d["success"] = False
-            else:
-                d["dbca_lands_waters_layer"] = True
-        except Exception as e:
-            d["dbca_lands_waters_layer"] = False
-            d["success"] = False
-
-    if DBCA_LANDS_WATERS_INTEREST:
-        try:
-            url = f"{KMI_URL}/{DBCA_LANDS_WATERS_INTEREST}"
-            resp = session.get(url)
-            resp.raise_for_status()
-            if "ServiceExceptionReport" in str(resp.content):
-                d["dbca_lands_waters_interest_layer"] = False
-                d["success"] = False
-            else:
-                d["dbca_lands_waters_interest_layer"] = True
-        except Exception as e:
-            d["dbca_lands_waters_interest_layer"] = False
-            d["success"] = False
 
     try:
         resp = session.get(AUTH2_STATUS_URL)
@@ -395,6 +247,7 @@ def healthcheck():
         j = resp.json()
         d["auth2_status"] = j["healthy"]
     except Exception as e:
+        d["auth2_status"] = None
         d["success"] = False
 
     return d
@@ -404,8 +257,9 @@ def healthcheck():
 def healthcheck_json():
     d = healthcheck()
     response.content_type = "application/json"
-    # Mark response as "cache for 60 seconds".
-    response.set_header("Cache-Control", "max-age=60")
+    if CACHE_RESPONSE:
+        # Mark response as "cache for 60 seconds".
+        response.set_header("Cache-Control", "max-age=60")
     return json.dumps(d)
 
 
@@ -466,106 +320,106 @@ def healthcheck_http():
     if d["csw_catalogue_count"]:
         output += f"CSW spatial catalogue for SSS: {d['csw_catalogue_count']} layers<br>\n"
     else:
-        output += f"CSW API endpoint error<br>\n"
+        output += "CSW API endpoint: error<br>\n"
 
     if d["todays_burns_count"]:
         output += f"Today's burns count (KMI): {d['todays_burns_count']}<br>\n"
     else:
-        output += f"Today's burns count (KMI): error<br>\n"
+        output += "Today's burns count (KMI): error<br>\n"
 
     if d["kmi_wmts_layer_count"]:
         output += f"KMI WMTS layer count (public workspace): {d['kmi_wmts_layer_count']}<br>\n"
     else:
-        output += f"KMI WMTS GetCapabilities error<br>\n"
+        output += "KMI WMTS GetCapabilities: error<br>\n"
 
     if d["bfrs_profile_api_endpoint"]:
         output += "BFRS profile API endpoint: OK<br>\n"
     else:
-        output += f"BFRS profile API endpoint error<br>\n"
+        output += "BFRS profile API endpoint: error<br>\n"
 
     output += "</p>\n<p>\n"
 
-    if d["dbca_going_bushfires_layer"]:
-        output += "DBCA Going Bushfires layer (KMI): OK<br>\n"
+    if d[DBCA_GOING_BUSHFIRES_LAYER]:
+        output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): OK<br>\n"
     else:
-        output += f"DBCA Going Bushfires layer (KMI) error<br>\n"
+        output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): error<br>\n"
 
-    if d["dbca_control_lines_layer"]:
-        output += "DBCA Control Lines layer (KMI): OK<br>\n"
+    if d[DBCA_CONTROL_LINES_LAYER]:
+        output += f"DBCA Control Lines layer ({DBCA_CONTROL_LINES_LAYER}): OK<br>\n"
     else:
-        output += f"DBCA Control Lines (KMI) error<br>\n"
+        output += f"DBCA Control Lines ({DBCA_CONTROL_LINES_LAYER}): error<br>\n"
 
-    if d["dfes_going_bushfires_layer"]:
-        output += "DFES Going Bushfires layer (KMI): OK<br>\n"
+    if d[DFES_GOING_BUSHFIRES_LAYER]:
+        output += f"DFES Going Bushfires layer ({DFES_GOING_BUSHFIRES_LAYER}): OK<br>\n"
     else:
-        output += f"DFES Going Bushfires layer (KMI) error<br>\n"
+        output += f"DFES Going Bushfires layer (DFES_GOING_BUSHFIRES_LAYER): error<br>\n"
 
-    if d["all_current_hotspots_layer"]:
-        output += "All current hotspots layer (KMI): OK<br>\n"
+    if d[ALL_CURRENT_HOTSPOTS_LAYER]:
+        output += f"All current hotspots layer ({ALL_CURRENT_HOTSPOTS_LAYER}): OK<br>\n"
     else:
-        output += f"All current hotspots layer (KMI) error<br>\n"
+        output += f"All current hotspots layer ({ALL_CURRENT_HOTSPOTS_LAYER}): error<br>\n"
 
-    if d["lightning_24h_layer"]:
-        output += "Lightning 24h layer (KMI): OK<br>\n"
+    if d[LIGHTNING_24H_LAYER]:
+        output += f"Lightning 24h layer ({LIGHTNING_24H_LAYER}): OK<br>\n"
     else:
-        output += f"Lightning 24h layer (KMI) error<br>\n"
+        output += f"Lightning 24h layer ({LIGHTNING_24H_LAYER}): error<br>\n"
 
-    if d["lightning_24_48h_layer"]:
-        output += "Lightning 24-48h layer (KMI): OK<br>\n"
+    if d[LIGHTNING_24_48H_LAYER]:
+        output += f"Lightning 24-48h layer ({LIGHTNING_24_48H_LAYER}): OK<br>\n"
     else:
-        output += f"Lightning 24-48h layer (KMI) error<br>\n"
+        output += f"Lightning 24-48h layer ({LIGHTNING_24_48H_LAYER}): error<br>\n"
 
-    if d["lightning_48_72h_layer"]:
-        output += "Lightning 48-72h layer (KMI): OK<br>\n"
+    if d[LIGHTNING_48_72H_LAYER]:
+        output += f"Lightning 48-72h layer ({LIGHTNING_48_72H_LAYER}): OK<br>\n"
     else:
-        output += f"Lightning 48-72h layer (KMI) error<br>\n"
+        output += f"Lightning 48-72h layer ({LIGHTNING_48_72H_LAYER}): error<br>\n"
 
-    if d["fuel_age_1_6y_layer"]:
-        output += "Fuel age 1-6+ years layer (KMI): OK<br>\n"
+    if d[FUEL_AGE_1_6Y_LAYER]:
+        output += f"Fuel age 1-6+ years layer ({FUEL_AGE_1_6Y_LAYER}): OK<br>\n"
     else:
-        output += f"Fuel age 1-6+ years layer (KMI) error<br>\n"
+        output += f"Fuel age 1-6+ years layer ({FUEL_AGE_1_6Y_LAYER}): error<br>\n"
 
-    if d["fuel_age_nonforest_1_6y_layer"]:
-        output += "Fuel age non forest 1-6+ years layer (KMI): OK<br>\n"
+    if d[FUEL_AGE_NONFOREST_1_6Y_LAYER]:
+        output += f"Fuel age non forest 1-6+ years layer ({FUEL_AGE_NONFOREST_1_6Y_LAYER}): OK<br>\n"
     else:
-        output += f"Fuel age non forest 1-6+ years layer (KMI) error<br>\n"
+        output += f"Fuel age non forest 1-6+ years layer ({FUEL_AGE_NONFOREST_1_6Y_LAYER}): error<br>\n"
 
-    if d["cog_basemap_layer"]:
-        output += "COG basemap layer (KMI): OK<br>\n"
+    if d[COG_BASEMAP_LAYER]:
+        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): OK<br>\n"
     else:
-        output += f"COG basemap layer (KMI) error<br>\n"
+        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): error<br>\n"
 
-    if d["state_basemap_layer"]:
-        output += "State basemap layer (KMI): OK<br>\n"
+    if d[STATE_BASEMAP_LAYER]:
+        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): OK<br>\n"
     else:
-        output += f"State basemap layer (KMI) error<br>\n"
+        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): error<br>\n"
 
-    if d["dbca_burn_program_layer"]:
-        output += "DBCA burn options program layer (KMI): OK<br>\n"
+    if d[DBCA_BURN_PROGRAM_LAYER]:
+        output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): OK<br>\n"
     else:
-        output += f"DBCA burn options program layer (KMI) error<br>\n"
+        output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): error<br>\n"
 
-    if d["daily_active_burns_layer"]:
-        output += "Daily active and planned prescribed burns layer (KMI): OK<br>\n"
+    if d[DAILY_ACTIVE_BURNS_LAYER]:
+        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): OK<br>\n"
     else:
-        output += f"Daily active and planned prescribed burns layer (KMI) error<br>\n"
+        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): error<br>\n"
 
-    if d["dbca_lands_waters_layer"]:
-        output += "DBCA legislated lands and waters layer (KMI): OK<br>\n"
+    if d[DBCA_LANDS_WATERS_LAYER]:
+        output += f"DBCA legislated lands and waters layer ({DBCA_LANDS_WATERS_LAYER}): OK<br>\n"
     else:
-        output += f"DBCA legislated lands and waters layer (KMI) error<br>\n"
+        output += f"DBCA legislated lands and waters layer ({DBCA_LANDS_WATERS_LAYER}): error<br>\n"
 
-    if d["dbca_lands_waters_interest_layer"]:
-        output += "DBCA lands and waters of interest layer (KMI): OK<br>\n"
+    if d[DBCA_LANDS_WATERS_INTEREST_LAYER]:
+        output += f"DBCA lands and waters of interest layer ({DBCA_LANDS_WATERS_INTEREST_LAYER}): OK<br>\n"
     else:
-        output += f"DBCA lands and waters of interest layer (KMI) error<br>\n"
+        output += f"DBCA lands and waters of interest layer ({DBCA_LANDS_WATERS_INTEREST_LAYER}): error<br>\n"
 
     output += "</p>\n<p>\n"
 
     if d["auth2_status"]:
         output += "AUTH2 status: OK<br>\n"
     else:
-        output += f"AUTH2 error<br>\n"
+        output += "AUTH2 status: error<br>\n"
 
     output += "</p>\n<p>\n"
     if d["success"]:
@@ -574,8 +428,9 @@ def healthcheck_http():
         output += "<strong>Finished checks, something is wrong =(</strong>"
     output += "</p>"
 
-    # Mark response as "cache for 60 seconds".
-    response.set_header("Cache-Control", "max-age=60")
+    if CACHE_RESPONSE:
+        # Mark response as "cache for 60 seconds".
+        response.set_header("Cache-Control", "max-age=60")
     return OUTPUT_TEMPLATE.format(output)
 
 
@@ -586,4 +441,8 @@ def get_favicon():
 
 if __name__ == "__main__":
     from bottle import run
-    run(application, host="0.0.0.0", port=os.environ.get("PORT", 8080))
+    run(
+        application,
+        host="0.0.0.0",
+        port=os.environ.get("PORT", 8080),
+    )
