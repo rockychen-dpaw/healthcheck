@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "healthcheck"
-version = "1.1.16"
+version = "1.1.17"
 description = "Internal service endpoint health check for Spatial Support System"
 authors = ["ASI <asi@dbca.wa.gov.au>"]
 
@@ -13,7 +13,7 @@ python-dotenv = "1.0.0"
 gunicorn = "21.2.0"
 
 [tool.poetry.group.dev.dependencies]
-ipython = "^8.19.0"
+ipython = "^8.20.0"
 
 [build-system]
 requires = ["poetry-core"]

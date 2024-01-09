@@ -1,22 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 nameSuffix: -prod
+resources:
+  - ../../base
+  - ingress.yaml
+  - pdb.yaml
 secretGenerator:
   - name: healthcheck-env
     type: Opaque
     envs:
     - .env
-resources:
-  - ../../base
-  - ingress.yaml
-  - pdb.yaml
 labels:
   - includeSelectors: true
     pairs:
       variant: prod
-images:
-  - name: ghcr.io/dbca-wa/healthcheck
-    newTag: 1.1.16
 patches:
   - path: deployment_patch.yaml
   - path: service_patch.yaml
+images:
+  - name: ghcr.io/dbca-wa/healthcheck
+    newTag: 1.1.17

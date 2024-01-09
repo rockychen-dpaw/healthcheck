@@ -317,17 +317,17 @@ def healthcheck_http():
 
     output += "</p>\n<p>\n"
 
-    if d["csw_catalogue_count"]:
+    if "csw_catalogue_count" in d and d["csw_catalogue_count"]:  # Should be >0
         output += f"CSW spatial catalogue for SSS: {d['csw_catalogue_count']} layers<br>\n"
     else:
         output += "CSW API endpoint: error<br>\n"
 
-    if d["todays_burns_count"]:
+    if "todays_burns_count" in d:  # Burns count might be 0
         output += f"Today's burns count (KMI): {d['todays_burns_count']}<br>\n"
     else:
         output += "Today's burns count (KMI): error<br>\n"
 
-    if d["kmi_wmts_layer_count"]:
+    if d["kmi_wmts_layer_count"] and d["kmi_wmts_layer_count"]:  # Should be >0
         output += f"KMI WMTS layer count (public workspace): {d['kmi_wmts_layer_count']}<br>\n"
     else:
         output += "KMI WMTS GetCapabilities: error<br>\n"

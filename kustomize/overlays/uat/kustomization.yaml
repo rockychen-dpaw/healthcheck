@@ -1,15 +1,15 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 nameSuffix: -uat
+resources:
+  - ../../base
+  - ingress.yaml
+  - pdb.yaml
 secretGenerator:
   - name: healthcheck-env
     type: Opaque
     envs:
     - .env
-resources:
-  - ../../base
-  - ingress.yaml
-  - pdb.yaml
 labels:
   - includeSelectors: true
     pairs:
