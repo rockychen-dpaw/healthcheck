@@ -16,7 +16,8 @@ labels:
       variant: prod
 patches:
   - path: deployment_patch.yaml
+  - path: deployment_hpa_patch.yaml
   - path: service_patch.yaml
 images:
   - name: ghcr.io/dbca-wa/healthcheck
-    newTag: 1.1.17
+    newTag: 1.1.18
