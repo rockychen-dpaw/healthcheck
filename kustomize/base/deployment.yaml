@@ -3,7 +3,6 @@ kind: Deployment
 metadata:
   name: healthcheck-deployment
 spec:
-  replicas: 2
   strategy:
     type: RollingUpdate
   template:

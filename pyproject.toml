@@ -1,19 +1,20 @@
 [tool.poetry]
 name = "healthcheck"
-version = "1.1.17"
+version = "1.1.18"
 description = "Internal service endpoint health check for Spatial Support System"
 authors = ["ASI <asi@dbca.wa.gov.au>"]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.11"
 bottle = "0.12.25"
-requests = "2.31.0"
-pytz = "2023.3.post1"
-python-dotenv = "1.0.0"
-gunicorn = "21.2.0"
+requests = "2.32.3"
+pytz = "2024.1"
+python-dotenv = "1.0.1"
+gunicorn = "22.0.0"
 
 [tool.poetry.group.dev.dependencies]
-ipython = "^8.20.0"
+ipython = "^8.25.0"
+pre-commit = "^3.7.1"
 
 [build-system]
 requires = ["poetry-core"]

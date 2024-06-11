@@ -41,3 +41,16 @@ To build a new Docker image from the `Dockerfile`:
 To run a Docker container locally, publishing container port 8080 to a local port:
 
     docker container run --rm --publish 8080:8080 --env-file .env ghcr.io/dbca-wa/healthcheck
+
+# Pre-commit hooks
+
+This project includes the following pre-commit hooks:
+
+- TruffleHog (credential scanning): https://github.com/marketplace/actions/trufflehog-oss
+
+Pre-commit hooks may have additional system dependencies to run. Optionally
+install pre-commit hooks locally like so:
+
+    poetry run pre-commit install
+
+Reference: https://pre-commit.com/

@@ -1,0 +1,7 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: healthcheck-deployment-hpa
+spec:
+  scaleTargetRef:
+    name: healthcheck-deployment-prod
