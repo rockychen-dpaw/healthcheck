@@ -1,5 +1,6 @@
 from bottle import Bottle, static_file, response
 from datetime import datetime
+import humanize
 import json
 import os
 import requests
@@ -71,6 +72,12 @@ def liveness():
     return "OK"
 
 
+def get_session():
+    session = requests.Session()
+    session.auth = (USER_SSO, PASS_SSO)
+    return session
+
+
 def healthcheck():
     """Query HTTP sources and derive a dictionary of response successes.
     """
@@ -79,8 +86,7 @@ def healthcheck():
         "success": True,
     }
 
-    session = requests.Session()
-    session.auth = (USER_SSO, PASS_SSO)
+    session = get_session()
 
     try:
         trackingdata = session.get(SSS_DEVICES_URL)
@@ -263,8 +269,9 @@ def healthcheck_json():
     return json.dumps(d)
 
 
-@app.route("/")
-def healthcheck_http():
+# Retain legacy health check route for PRTG.
+@app.route("/legacy")
+def index_legacy():
     d = healthcheck()
     output = f"<p>Server time: {d['server_time']}</p>\n"
     output += "<p>\n"
@@ -436,7 +443,342 @@ def healthcheck_http():
 
 @app.route("/favicon.ico", method="GET")
 def get_favicon():
-    return static_file("favicon.ico", root="./static/images/")
+    return static_file("favicon.ico", root="static/images/")
+
+
+@app.route("/")
+def index():
+    return static_file("index.html", root="templates")
+
+
+@app.route("/api/resource-tracking-latest")
+def resource_tracking_latest():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
+        return f"<button class='pure-button button-success'>{seen}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/resource-tracking-delay")
+def resource_tracking_delay():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+        else:
+            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/iridium-latest")
+def iridium_latest():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
+        return f"<button class='pure-button button-success'>{seen}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/iridium-delay")
+def iridium_delay():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+        else:
+            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/tracplus-latest")
+def tracplus_latest():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_TRACPLUS_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
+        return f"<button class='pure-button button-success'>{seen}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/dfes-latest")
+def dfes_latest():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_DFES_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
+        return f"<button class='pure-button button-success'>{seen}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/fleetcare-latest")
+def fleetcare_latest():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_FLEETCARE_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
+        return f"<button class='pure-button button-success'>{seen}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/fleetcare-delay")
+def fleetcare_delay():
+    session = get_session()
+
+    try:
+        trackingdata = session.get(SSS_FLEETCARE_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+        else:
+            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/csw-layers")
+def csw_layers():
+    session = get_session()
+
+    try:
+        resp = session.get(CSW_API)
+        resp.raise_for_status()
+        j = resp.json()
+        catalogue = len(j)
+        return f"<button class='pure-button button-success'>{catalogue} layers</button>"
+    except:
+        return f"<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/bfrs-status")
+def bfrs_status():
+    session = get_session()
+
+    try:
+        resp = session.get(BFRS_URL)
+        resp.raise_for_status()
+        return "<button class='pure-button button-success'>OK</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/auth2-status")
+def auth2_status():
+    session = get_session()
+
+    try:
+        resp = session.get(AUTH2_STATUS_URL)
+        resp.raise_for_status()
+        return "<button class='pure-button button-success'>OK</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/todays-burns")
+def todays_burns():
+    params = {
+        "service": "wfs",
+        "version": "1.1.0",
+        "request": "GetFeature",
+        "typeNames": "public:todays_burns",
+        "resultType": "hits",
+    }
+
+    # Public service, so we need to send an anonymous request.
+    try:
+        resp = requests.get(KMI_WFS_URL, params=params)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        resp_d = {i[0]: i[1] for i in root.items()}
+        todays_burns = int(resp_d["numberOfFeatures"])
+        return f"<button class='pure-button button-success'>{todays_burns}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+def get_kmi_layer(kmi_layer):
+    # Common parameters to send with every GetMap request to KMI Geoserver.
+    params = {
+        "service": "WMS",
+        "version": "1.1.0",
+        "request": "GetMap",
+        "bbox": "109.3,-40.4,132.6,-6.7",
+        "width": "552",
+        "height": "768",
+        "srs": "EPSG:4326",
+        "format": "image/jpeg",
+        "layers": kmi_layer,
+    }
+
+    prefix = kmi_layer.split(":")[0]
+    path = f"{prefix}/wms"
+
+    try:
+        url = f"{KMI_URL}/{path}"
+        if prefix == "public":
+            resp = requests.get(url, params=params)
+        else:
+            session = get_session()
+            resp = session.get(url, params=params)
+        resp.raise_for_status()
+        if "ServiceExceptionReport" in str(resp.content):
+            return False
+        return True
+    except:
+        return False
+
+
+@app.route("/api/dbca-going-bushfires")
+def dbca_going_bushfires():
+    if get_kmi_layer(DBCA_GOING_BUSHFIRES_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/dbca-control-lines")
+def dbca_control_lines():
+    if get_kmi_layer(DBCA_CONTROL_LINES_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/dfes-going-bushfires")
+def dfes_going_bushfires():
+    if get_kmi_layer(DFES_GOING_BUSHFIRES_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/current-hotspots")
+def current_hotspots():
+    if get_kmi_layer(ALL_CURRENT_HOTSPOTS_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/lightning-24h")
+def lightning_24h():
+    if get_kmi_layer(LIGHTNING_24H_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/lightning-24-48h")
+def lightning_24_48h():
+    if get_kmi_layer(LIGHTNING_24_48H_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/lightning-48-72h")
+def lightning_48_72h():
+    if get_kmi_layer(LIGHTNING_48_72H_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/fuel-age-1-6y")
+def fuel_age_1_6y():
+    if get_kmi_layer(FUEL_AGE_1_6Y_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/fuel-age-nonforest-1-6y")
+def fuel_age_nonforest_1_6y():
+    if get_kmi_layer(FUEL_AGE_NONFOREST_1_6Y_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/cog-basemap")
+def cog_basemap():
+    if get_kmi_layer(COG_BASEMAP_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/state-basemap")
+def state_basemap():
+    if get_kmi_layer(STATE_BASEMAP_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/dbca-burn-program")
+def dbca_burn_program():
+    if get_kmi_layer(DBCA_BURN_PROGRAM_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/daily-active-burns")
+def daily_active_burns():
+    if get_kmi_layer(DAILY_ACTIVE_BURNS_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/dbca-lands-waters")
+def dbca_land_waters():
+    if get_kmi_layer(DBCA_LANDS_WATERS_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/dbca-lands-waters-interest")
+def dbca_land_waters_interest():
+    if get_kmi_layer(DBCA_LANDS_WATERS_INTEREST_LAYER):
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return "<button class='pure-button button-error'>ERROR</button>"
 
 
 if __name__ == "__main__":
@@ -445,4 +787,5 @@ if __name__ == "__main__":
         application,
         host="0.0.0.0",
         port=os.environ.get("PORT", 8080),
+        reloader=True,
     )
