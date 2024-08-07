@@ -646,29 +646,28 @@ def todays_burns():
 
 
 def get_kmi_layer(kmi_layer):
-    # Common parameters to send with every GetMap request to KMI Geoserver.
+    # Common parameters to send with every GetTile request to KMI Geoserver.
     params = {
-        "service": "WMS",
-        "version": "1.1.0",
-        "request": "GetMap",
-        "bbox": "109.3,-40.4,132.6,-6.7",
-        "width": "552",
-        "height": "768",
-        "srs": "EPSG:4326",
-        "format": "image/jpeg",
-        "layers": kmi_layer,
+        "service": "WMTS",
+        "version": "1.0.0",
+        "request": "GetTile",
+        # These matrix settings are most of the extent of Western Australia.
+        "tilematrixset": "mercator",
+        "tilematrix": "mercator:4",
+        "tilecol": "13",
+        "tilerow": "9",
+        "format": "image/png",
+        "layer": kmi_layer,
     }
 
     prefix = kmi_layer.split(":")[0]
-    path = f"{prefix}/wms"
 
     try:
-        url = f"{KMI_URL}/{path}"
         if prefix == "public":
-            resp = requests.get(url, params=params)
+            resp = requests.get(KMI_WMTS_URL, params=params)
         else:
             session = get_session()
-            resp = session.get(url, params=params)
+            resp = session.get(KMI_WMTS_URL, params=params)
         resp.raise_for_status()
         if "ServiceExceptionReport" in str(resp.content):
             return False
