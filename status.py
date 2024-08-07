@@ -1,12 +1,12 @@
-from bottle import Bottle, static_file, response
-from datetime import datetime
-import humanize
 import json
 import os
-import requests
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import humanize
+import requests
+from bottle import Bottle, response, static_file
 
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
@@ -37,7 +37,7 @@ SSS_DFES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=d
 SSS_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json"
 CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss")
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
-KMI_WFS_URL = f"{KMI_URL}/wfs"
+KMI_WFS_URL = f"{KMI_URL}/ows"
 KMI_WMTS_URL = f"{KMI_URL}/public/gwc/service/wmts"
 BFRS_URL = os.environ.get("BFRS_URL", "https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json")
 AUTH2_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/healthcheck")
