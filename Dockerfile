@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 # Prepare the base environment.
-FROM python:3.11.9-slim AS builder_base_healthcheck
+FROM python:3.12.4-slim AS builder_base_healthcheck
 LABEL org.opencontainers.image.authors=asi@dbca.wa.gov.au
-LABEL org.opencontainers.image.source https://github.com/dbca-wa/healthcheck
+LABEL org.opencontainers.image.source=https://github.com/dbca-wa/healthcheck
 
 RUN apt-get update -y \
   && apt-get upgrade -y \
@@ -13,7 +13,7 @@ RUN apt-get update -y \
 FROM builder_base_healthcheck AS python_libs_healthcheck
 WORKDIR /app
 ARG POETRY_VERSION=1.8.3
-RUN pip install --root-user-action=ignore poetry=="${POETRY_VERSION}"
+RUN pip install --no-cache-dir --root-user-action=ignore poetry=="${POETRY_VERSION}"
 COPY poetry.lock pyproject.toml ./
 RUN poetry config virtualenvs.create false \
   && poetry install --no-interaction --no-ansi --only main
