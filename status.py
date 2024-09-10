@@ -38,7 +38,7 @@ SSS_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_t
 CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss")
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
 KMI_WFS_URL = f"{KMI_URL}/ows"
-KMI_WMTS_URL = f"{KMI_URL}/public/gwc/service/wmts"
+KMI_WMTS_URL = f"{KMI_URL}/gwc/service/wmts"
 BFRS_URL = os.environ.get("BFRS_URL", "https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json")
 AUTH2_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/healthcheck")
 AUTH2_STATUS_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/status")
@@ -176,8 +176,7 @@ def healthcheck():
         d["success"] = False
 
     try:
-        # Public service, so we need to send an anonymous request.
-        resp = requests.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
+        resp = session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
         if not resp.status_code == 200:
             resp.raise_for_status()
         root = ET.fromstring(resp.content)
@@ -335,7 +334,7 @@ def index_legacy():
         output += "Today's burns count (KMI): error<br>\n"
 
     if d["kmi_wmts_layer_count"] and d["kmi_wmts_layer_count"]:  # Should be >0
-        output += f"KMI WMTS layer count (public workspace): {d['kmi_wmts_layer_count']}<br>\n"
+        output += f"KMI WMTS layer count: {d['kmi_wmts_layer_count']}<br>\n"
     else:
         output += "KMI WMTS GetCapabilities: error<br>\n"
 
@@ -569,6 +568,23 @@ def fleetcare_delay():
         return "<button class='pure-button button-error'>ERROR</button>"
 
 
+@app.route("/api/kmi-wmts-layers")
+def kmi_wmts_layers():
+    session = get_session()
+
+    try:
+        resp = session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
+        if not resp.status_code == 200:
+            resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        ns = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
+        layers = root.findall(".//wmts:Layer", ns)
+        layer_count = len(layers)
+        return f"<button class='pure-button button-success'>{layer_count} layers</button>"
+    except:
+        return f"<button class='pure-button button-error'>ERROR</button>"
+
+
 @app.route("/api/csw-layers")
 def csw_layers():
     session = get_session()
@@ -630,29 +646,28 @@ def todays_burns():
 
 
 def get_kmi_layer(kmi_layer):
-    # Common parameters to send with every GetMap request to KMI Geoserver.
+    # Common parameters to send with every GetTile request to KMI Geoserver.
     params = {
-        "service": "WMS",
-        "version": "1.1.0",
-        "request": "GetMap",
-        "bbox": "109.3,-40.4,132.6,-6.7",
-        "width": "552",
-        "height": "768",
-        "srs": "EPSG:4326",
-        "format": "image/jpeg",
-        "layers": kmi_layer,
+        "service": "WMTS",
+        "version": "1.0.0",
+        "request": "GetTile",
+        # These matrix settings are most of the extent of Western Australia.
+        "tilematrixset": "mercator",
+        "tilematrix": "mercator:4",
+        "tilecol": "13",
+        "tilerow": "9",
+        "format": "image/png",
+        "layer": kmi_layer,
     }
 
     prefix = kmi_layer.split(":")[0]
-    path = f"{prefix}/wms"
 
     try:
-        url = f"{KMI_URL}/{path}"
         if prefix == "public":
-            resp = requests.get(url, params=params)
+            resp = requests.get(KMI_WMTS_URL, params=params)
         else:
             session = get_session()
-            resp = session.get(url, params=params)
+            resp = session.get(KMI_WMTS_URL, params=params)
         resp.raise_for_status()
         if "ServiceExceptionReport" in str(resp.content):
             return False
