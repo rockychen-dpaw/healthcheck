@@ -1,9 +1,9 @@
 import json
 import os
-import xml.etree.ElementTree as ET
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import defusedxml.ElementTree as ET
 import humanize
 import requests
 from bottle import Bottle, response, static_file
