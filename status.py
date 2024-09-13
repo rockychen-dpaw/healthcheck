@@ -11,6 +11,7 @@ from bottle import Bottle, response, static_file
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
     from dotenv import load_dotenv
+
     load_dotenv()
 app = application = Bottle()
 
@@ -35,7 +36,9 @@ SSS_IRIDIUM_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_typ
 SSS_TRACPLUS_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json"
 SSS_DFES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json"
 SSS_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json"
-CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss")
+CSW_API = os.environ.get(
+    "CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss"
+)
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
 KMI_WFS_URL = f"{KMI_URL}/ows"
 KMI_WMTS_URL = f"{KMI_URL}/gwc/service/wmts"
@@ -79,8 +82,7 @@ def get_session():
 
 
 def healthcheck():
-    """Query HTTP sources and derive a dictionary of response successes.
-    """
+    """Query HTTP sources and derive a dictionary of response successes."""
     d = {
         "server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"),
         "success": True,
@@ -97,7 +99,7 @@ def healthcheck():
         d["latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception as e:
+    except Exception:
         d["latest_point"] = None
         d["latest_point_delay"] = None
         d["success"] = False
@@ -111,7 +113,7 @@ def healthcheck():
         d["iridium_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception as e:
+    except Exception:
         d["iridium_latest_point"] = None
         d["iridium_latest_point_delay"] = None
         d["success"] = False
@@ -123,7 +125,7 @@ def healthcheck():
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["tracplus_latest_point"] = t.isoformat()
         d["tracplus_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-    except Exception as e:
+    except Exception:
         d["tracplus_latest_point"] = None
         d["tracplus_latest_point_delay"] = None
         d["success"] = False
@@ -135,7 +137,7 @@ def healthcheck():
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["dfes_latest_point"] = t.isoformat()
         d["dfes_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-    except Exception as e:
+    except Exception:
         d["dfes_latest_point"] = None
         d["dfes_latest_point_delay"] = None
         d["success"] = False
@@ -149,7 +151,7 @@ def healthcheck():
         d["fleetcare_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception as e:
+    except Exception:
         d["fleetcare_latest_point"] = None
         d["fleetcare_latest_point_delay"] = None
         d["success"] = False
@@ -159,19 +161,25 @@ def healthcheck():
         resp.raise_for_status()
         j = resp.json()
         d["csw_catalogue_count"] = len(j)
-    except Exception as e:
+    except Exception:
         d["csw_catalogue_count"] = None
         d["success"] = False
 
     try:
         # Public service, so we need to send an anonymous request.
-        params = {"service": "wfs", "version": "1.1.0", "request": "GetFeature", "typeNames": "public:todays_burns", "resultType": "hits"}
+        params = {
+            "service": "wfs",
+            "version": "1.1.0",
+            "request": "GetFeature",
+            "typeNames": "public:todays_burns",
+            "resultType": "hits",
+        }
         resp = requests.get(KMI_WFS_URL, params=params)
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
         resp_d = {i[0]: i[1] for i in root.items()}
         d["todays_burns_count"] = int(resp_d["numberOfFeatures"])
-    except Exception as e:
+    except Exception:
         d["todays_burns_count"] = None
         d["success"] = False
 
@@ -183,7 +191,7 @@ def healthcheck():
         ns = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
         layers = root.findall(".//wmts:Layer", ns)
         d["kmi_wmts_layer_count"] = len(layers)
-    except Exception as e:
+    except Exception:
         d["kmi_wmts_layer_count"] = None
         d["success"] = False
 
@@ -192,7 +200,7 @@ def healthcheck():
         resp.raise_for_status()
         j = resp.json()
         d["bfrs_profile_api_endpoint"] = True
-    except Exception as e:
+    except Exception:
         d["bfrs_profile_api_endpoint"] = None
         d["success"] = False
 
@@ -242,7 +250,7 @@ def healthcheck():
                     d["success"] = False
                 else:
                     d[kmi_layer] = True
-            except Exception as e:
+            except Exception:
                 d[kmi_layer] = False
                 d["success"] = False
 
@@ -251,7 +259,7 @@ def healthcheck():
         resp.raise_for_status()
         j = resp.json()
         d["auth2_status"] = j["healthy"]
-    except Exception as e:
+    except Exception:
         d["auth2_status"] = None
         d["success"] = False
 
@@ -306,7 +314,7 @@ def index_legacy():
 
     output += f"Latest DFES tracking point: {d['dfes_latest_point']}<br>\n"
     output += "DFES tracking delay currently {0:.1f} min<br>\n".format(
-        d['dfes_latest_point_delay'],
+        d["dfes_latest_point_delay"],
     )
 
     output += f"Latest Fleetcare tracking point: {d['fleetcare_latest_point']}<br>\n"
@@ -358,7 +366,7 @@ def index_legacy():
     if d[DFES_GOING_BUSHFIRES_LAYER]:
         output += f"DFES Going Bushfires layer ({DFES_GOING_BUSHFIRES_LAYER}): OK<br>\n"
     else:
-        output += f"DFES Going Bushfires layer (DFES_GOING_BUSHFIRES_LAYER): error<br>\n"
+        output += "DFES Going Bushfires layer (DFES_GOING_BUSHFIRES_LAYER): error<br>\n"
 
     if d[ALL_CURRENT_HOTSPOTS_LAYER]:
         output += f"All current hotspots layer ({ALL_CURRENT_HOTSPOTS_LAYER}): OK<br>\n"
@@ -582,7 +590,7 @@ def kmi_wmts_layers():
         layer_count = len(layers)
         return f"<button class='pure-button button-success'>{layer_count} layers</button>"
     except:
-        return f"<button class='pure-button button-error'>ERROR</button>"
+        return "<button class='pure-button button-error'>ERROR</button>"
 
 
 @app.route("/api/csw-layers")
@@ -596,7 +604,7 @@ def csw_layers():
         catalogue = len(j)
         return f"<button class='pure-button button-success'>{catalogue} layers</button>"
     except:
-        return f"<button class='pure-button button-error'>ERROR</button>"
+        return "<button class='pure-button button-error'>ERROR</button>"
 
 
 @app.route("/api/bfrs-status")
@@ -798,6 +806,7 @@ def dbca_land_waters_interest():
 
 if __name__ == "__main__":
     from bottle import run
+
     run(
         application,
         host="0.0.0.0",
