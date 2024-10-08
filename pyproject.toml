@@ -12,12 +12,12 @@ requests = "2.32.3"
 pytz = "2024.1"
 python-dotenv = "1.0.1"
 gunicorn = "23.0.0"
-humanize = "4.10.0"
+humanize = "4.11.0"
 defusedxml = "0.7.1"
 
 [tool.poetry.group.dev.dependencies]
-ipython = "^8.27.0"
-pre-commit = "^3.7.1"
+ipython = "^8.28.0"
+pre-commit = "^4.0.0"
 
 # Reference: https://docs.astral.sh/ruff/configuration/
 [tool.ruff]
