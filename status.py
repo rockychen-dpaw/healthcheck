@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -15,6 +17,15 @@ if os.path.exists(dot_env):
     load_dotenv()
 app = application = Bottle()
 
+
+# Configure logging.
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+handler.setFormatter(formatter)
+LOGGER.addHandler(handler)
 
 TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))
 OUTPUT_TEMPLATE = """<!DOCTYPE html>
@@ -83,10 +94,7 @@ def get_session():
 
 def healthcheck():
     """Query HTTP sources and derive a dictionary of response successes."""
-    d = {
-        "server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"),
-        "success": True,
-    }
+    d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
 
     session = get_session()
 
@@ -99,7 +107,10 @@ def healthcheck():
         d["latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {SSS_DEVICES_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {SSS_DEVICES_URL}")
         d["latest_point"] = None
         d["latest_point_delay"] = None
         d["success"] = False
@@ -113,7 +124,10 @@ def healthcheck():
         d["iridium_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {SSS_IRIDIUM_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {SSS_IRIDIUM_URL}")
         d["iridium_latest_point"] = None
         d["iridium_latest_point_delay"] = None
         d["success"] = False
@@ -125,7 +139,10 @@ def healthcheck():
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["tracplus_latest_point"] = t.isoformat()
         d["tracplus_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {SSS_TRACPLUS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {SSS_TRACPLUS_URL}")
         d["tracplus_latest_point"] = None
         d["tracplus_latest_point_delay"] = None
         d["success"] = False
@@ -137,7 +154,10 @@ def healthcheck():
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["dfes_latest_point"] = t.isoformat()
         d["dfes_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {SSS_DFES_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {SSS_DFES_URL}")
         d["dfes_latest_point"] = None
         d["dfes_latest_point_delay"] = None
         d["success"] = False
@@ -151,7 +171,10 @@ def healthcheck():
         d["fleetcare_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {SSS_FLEETCARE_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {SSS_FLEETCARE_URL}")
         d["fleetcare_latest_point"] = None
         d["fleetcare_latest_point_delay"] = None
         d["success"] = False
@@ -161,7 +184,10 @@ def healthcheck():
         resp.raise_for_status()
         j = resp.json()
         d["csw_catalogue_count"] = len(j)
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying CSW API: {CSW_API}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying CSW API: {CSW_API}")
         d["csw_catalogue_count"] = None
         d["success"] = False
 
@@ -179,7 +205,10 @@ def healthcheck():
         root = ET.fromstring(resp.content)
         resp_d = {i[0]: i[1] for i in root.items()}
         d["todays_burns_count"] = int(resp_d["numberOfFeatures"])
-    except Exception:
+    except Exception as e:
+        LOGGER.warning("Error querying KMI WFS (public:todays_burns)")
+        LOGGER.warning(e)
+        d["errors"].append("Error querying KMI WFS (public:todays_burns)")
         d["todays_burns_count"] = None
         d["success"] = False
 
@@ -191,7 +220,10 @@ def healthcheck():
         ns = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
         layers = root.findall(".//wmts:Layer", ns)
         d["kmi_wmts_layer_count"] = len(layers)
-    except Exception:
+    except Exception as e:
+        LOGGER.warning("Error querying KMI WMTS layer count")
+        LOGGER.warning(e)
+        d["errors"].append("Error querying KMI WMTS layer count")
         d["kmi_wmts_layer_count"] = None
         d["success"] = False
 
@@ -200,7 +232,10 @@ def healthcheck():
         resp.raise_for_status()
         j = resp.json()
         d["bfrs_profile_api_endpoint"] = True
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying BFRS API endpoint: {BFRS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying BFRS API endpoint: {BFRS_URL}")
         d["bfrs_profile_api_endpoint"] = None
         d["success"] = False
 
@@ -259,7 +294,10 @@ def healthcheck():
         resp.raise_for_status()
         j = resp.json()
         d["auth2_status"] = j["healthy"]
-    except Exception:
+    except Exception as e:
+        LOGGER.warning(f"Error querying Auth2 status API endpoint: {AUTH2_STATUS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Auth2 status API endpoint: {AUTH2_STATUS_URL}")
         d["auth2_status"] = None
         d["success"] = False
 
@@ -273,7 +311,16 @@ def healthcheck_json():
     if CACHE_RESPONSE:
         # Mark response as "cache for 60 seconds".
         response.set_header("Cache-Control", "max-age=60")
-    return json.dumps(d)
+
+    try:
+        return json.dumps(d)
+    except Exception as e:
+        LOGGER.warning("Error serialising healthcheck response as JSON")
+        LOGGER.warning(e)
+        return {
+            "server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"),
+            "success": False,
+        }
 
 
 # Retain legacy health check route for PRTG.
