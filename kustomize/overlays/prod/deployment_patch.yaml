@@ -2,128 +2,120 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: healthcheck-deployment
-  labels:
-    app: healthcheck-prod
 spec:
-  selector:
-    matchLabels:
-      app: healthcheck-prod
   template:
-    metadata:
-      labels:
-        app: healthcheck-prod
     spec:
       containers:
-      - name: healthcheck
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: BFRS_URL
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: BFRS_URL
-        - name: CSW_API
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: CSW_API
-        - name: KMI_URL
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: KMI_URL
-        - name: RT_URL
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: RT_URL
-        - name: USER_SSO
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: USER_SSO
-        - name: PASS_SSO
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: PASS_SSO
-        - name: TRACKING_POINTS_MAX_DELAY
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: TRACKING_POINTS_MAX_DELAY
-        - name: DBCA_GOING_BUSHFIRES_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DBCA_GOING_BUSHFIRES_LAYER
-        - name: DBCA_CONTROL_LINES_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DBCA_CONTROL_LINES_LAYER
-        - name: DFES_GOING_BUSHFIRES_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DFES_GOING_BUSHFIRES_LAYER
-        - name: ALL_CURRENT_HOTSPOTS_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: ALL_CURRENT_HOTSPOTS_LAYER
-        - name: LIGHTNING_24H_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: LIGHTNING_24H_LAYER
-        - name: LIGHTNING_24_48H_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: LIGHTNING_24_48H_LAYER
-        - name: LIGHTNING_48_72H_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: LIGHTNING_48_72H_LAYER
-        - name: FUEL_AGE_1_6Y_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: FUEL_AGE_1_6Y_LAYER
-        - name: FUEL_AGE_NONFOREST_1_6Y_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: FUEL_AGE_NONFOREST_1_6Y_LAYER
-        - name: COG_BASEMAP_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: COG_BASEMAP_LAYER
-        - name: STATE_BASEMAP_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: STATE_BASEMAP_LAYER
-        - name: DBCA_BURN_PROGRAM_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DBCA_BURN_PROGRAM_LAYER
-        - name: DAILY_ACTIVE_BURNS_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DAILY_ACTIVE_BURNS_LAYER
-        - name: DBCA_LANDS_WATERS_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DBCA_LANDS_WATERS_LAYER
-        - name: DBCA_LANDS_WATERS_INTEREST_LAYER
-          valueFrom:
-            secretKeyRef:
-              name: healthcheck-env-prod
-              key: DBCA_LANDS_WATERS_INTEREST_LAYER
+        - name: healthcheck
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BFRS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: BFRS_URL
+            - name: CSW_API
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: CSW_API
+            - name: KMI_URL
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: KMI_URL
+            - name: RT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: RT_URL
+            - name: USER_SSO
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: USER_SSO
+            - name: PASS_SSO
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: PASS_SSO
+            - name: TRACKING_POINTS_MAX_DELAY
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: TRACKING_POINTS_MAX_DELAY
+            - name: DBCA_GOING_BUSHFIRES_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: DBCA_GOING_BUSHFIRES_LAYER
+            - name: DBCA_CONTROL_LINES_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: DBCA_CONTROL_LINES_LAYER
+            - name: DFES_GOING_BUSHFIRES_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: DFES_GOING_BUSHFIRES_LAYER
+            - name: ALL_CURRENT_HOTSPOTS_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: ALL_CURRENT_HOTSPOTS_LAYER
+            - name: LIGHTNING_24H_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: LIGHTNING_24H_LAYER
+            - name: LIGHTNING_24_48H_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: LIGHTNING_24_48H_LAYER
+            - name: LIGHTNING_48_72H_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: LIGHTNING_48_72H_LAYER
+            - name: FUEL_AGE_1_6Y_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: FUEL_AGE_1_6Y_LAYER
+            - name: FUEL_AGE_NONFOREST_1_6Y_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: FUEL_AGE_NONFOREST_1_6Y_LAYER
+            - name: COG_BASEMAP_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: COG_BASEMAP_LAYER
+            - name: STATE_BASEMAP_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: STATE_BASEMAP_LAYER
+            - name: DBCA_BURN_PROGRAM_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: DBCA_BURN_PROGRAM_LAYER
+            - name: DAILY_ACTIVE_BURNS_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: DAILY_ACTIVE_BURNS_LAYER
+            - name: DBCA_LANDS_WATERS_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: DBCA_LANDS_WATERS_LAYER
+            - name: DBCA_LANDS_WATERS_INTEREST_LAYER
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-prod
+                  key: DBCA_LANDS_WATERS_INTEREST_LAYER

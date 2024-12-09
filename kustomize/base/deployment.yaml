@@ -2,53 +2,62 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: healthcheck-deployment
+  labels:
+    app: healthcheck-deployment
 spec:
+  selector:
+    matchLabels:
+      app: healthcheck-deployment
   strategy:
     type: RollingUpdate
   template:
+    metadata:
+      labels:
+        app: healthcheck-deployment
     spec:
       containers:
-      - name: healthcheck
-        image: ghcr.io/dbca-wa/healthcheck
-        env:
-        - name: TZ
-          value: "Australia/Perth"
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "5m"
-          limits:
-            memory: "2048Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /liveness
-            port: 8080
-            scheme: HTTP
-          periodSeconds: 15
-          successThreshold: 1
-          failureThreshold: 3
-          timeoutSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /readiness
-            port: 8080
-            scheme: HTTP
-          periodSeconds: 15
-          successThreshold: 1
-          failureThreshold: 3
-          timeoutSeconds: 10
-        securityContext:
-          runAsNonRoot: true
-          privileged: false
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - ALL
-          readOnlyRootFilesystem: true
-        volumeMounts:
-          - mountPath: /tmp
-            name: tmpfs-ram
+        - name: healthcheck
+          image: ghcr.io/dbca-wa/healthcheck
+          imagePullPolicy: Always
+          env:
+            - name: TZ
+              value: "Australia/Perth"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "5m"
+            limits:
+              memory: "2048Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 8080
+              scheme: HTTP
+            periodSeconds: 15
+            successThreshold: 1
+            failureThreshold: 3
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 8080
+              scheme: HTTP
+            periodSeconds: 15
+            successThreshold: 1
+            failureThreshold: 3
+            timeoutSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            privileged: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - mountPath: /tmp
+              name: tmpfs-ram
       volumes:
         - name: tmpfs-ram
           emptyDir:

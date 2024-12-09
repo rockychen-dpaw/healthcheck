@@ -5,5 +5,5 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app: healthcheck-uat
+    app: healthcheck-deployment
     variant: uat
