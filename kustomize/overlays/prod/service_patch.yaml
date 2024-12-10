@@ -5,5 +5,5 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app: healthcheck-prod
+    app: healthcheck-deployment
     variant: prod

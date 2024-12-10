@@ -5,13 +5,13 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: healthcheck.dbca.wa.gov.au
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: healthcheck-clusterip-prod
-            port:
-              number: 8080
+    - host: healthcheck.dbca.wa.gov.au
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: healthcheck-clusterip-prod
+                port:
+                  number: 8080
