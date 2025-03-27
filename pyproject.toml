@@ -1,28 +1,26 @@
-[tool.poetry]
+[project]
 name = "healthcheck"
 version = "1.3.3"
 description = "Internal service endpoint health check for Spatial Support System"
-authors = ["ASI <asi@dbca.wa.gov.au>"]
-package-mode = false
+authors = [{ name = "Ashley Felton", email = "ashley.felton@dbca.wa.gov.au" }]
+license = "Apache-2.0"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+  "bottle==0.13.2",
+  "requests==2.32.3",
+  "pytz===2025.2",
+  "python-dotenv==1.0.1",
+  "gunicorn==23.0.0",
+  "humanize==4.11.0",
+  "defusedxml==0.7.1",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-bottle = "0.13.2"
-requests = "2.32.3"
-pytz = "2024.2"
-python-dotenv = "1.0.1"
-gunicorn = "23.0.0"
-humanize = "4.11.0"
-defusedxml = "0.7.1"
-pre-commit = "^4.0.1"
+[dependency-groups]
+dev = ["ipython>=8.31.0", "pre-commit>=4.1.0"]
 
-[tool.poetry.group.dev.dependencies]
-ipython = "^8.30.0"
-pre-commit = "^4.0.0"
-
-# Reference: https://docs.astral.sh/ruff/configuration/
 [tool.ruff]
 line-length = 120
+indent-width = 4
 
 [tool.ruff.lint]
 ignore = [
@@ -30,10 +28,5 @@ ignore = [
   "E722", # Bare except
 ]
 
-# Reference: https://www.djlint.com/docs/configuration/
 [tool.djlint]
 profile = "django"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
