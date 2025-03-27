@@ -21,14 +21,14 @@ spec:
           imagePullPolicy: Always
           env:
             - name: TZ
-              value: "Australia/Perth"
+              value: 'Australia/Perth'
           resources:
             requests:
-              memory: "64Mi"
-              cpu: "5m"
+              memory: '64Mi'
+              cpu: '5m'
             limits:
-              memory: "2048Mi"
-              cpu: "500m"
+              memory: '2048Mi'
+              cpu: '500m'
           livenessProbe:
             httpGet:
               path: /liveness
@@ -49,6 +49,7 @@ spec:
             timeoutSeconds: 10
           securityContext:
             runAsNonRoot: true
+            runAsUser: 1000
             privileged: false
             allowPrivilegeEscalation: false
             capabilities:
@@ -61,6 +62,7 @@ spec:
       volumes:
         - name: tmpfs-ram
           emptyDir:
-            medium: "Memory"
+            medium: 'Memory'
       restartPolicy: Always
       terminationGracePeriodSeconds: 180
+      automountServiceAccountToken: false
