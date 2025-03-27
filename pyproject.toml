@@ -1,6 +1,6 @@
 [project]
 name = "healthcheck"
-version = "1.3.3"
+version = "1.3.4"
 description = "Internal service endpoint health check for Spatial Support System"
 authors = [{ name = "Ashley Felton", email = "ashley.felton@dbca.wa.gov.au" }]
 license = "Apache-2.0"

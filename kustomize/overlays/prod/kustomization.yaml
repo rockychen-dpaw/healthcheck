@@ -22,4 +22,4 @@ patches:
   - path: service_patch.yaml
 images:
   - name: ghcr.io/dbca-wa/healthcheck
-    newTag: 1.3.3
+    newTag: 1.3.4
