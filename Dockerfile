@@ -39,6 +39,9 @@ FROM python:3.12-alpine
 LABEL org.opencontainers.image.authors=asi@dbca.wa.gov.au
 LABEL org.opencontainers.image.source=https://github.com/dbca-wa/healthcheck
 
+# Install system updates
+RUN apk upgrade --no-cache
+
 # Create a non-root user to run the application.
 RUN addgroup -g 1000 app \
   && adduser -H -D -u 1000 -G app app
