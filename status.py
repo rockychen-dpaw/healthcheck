@@ -42,11 +42,15 @@ OUTPUT_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 CACHE_RESPONSE = os.environ.get("CACHE_RESPONSE", True)
 RT_URL = os.environ.get("RT_URL", "https://resourcetracking.dbca.wa.gov.au")
-SSS_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
-SSS_IRIDIUM_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json"
-SSS_TRACPLUS_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json"
-SSS_DFES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json"
-SSS_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json"
+RT_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
+RT_IRIDIUM_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json"
+RT_IRIDIUM_METRICS_URL = RT_URL + "/api/devices/metrics/iriditrak/"
+RT_TRACPLUS_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json"
+RT_TRACPLUS_METRICS_URL = RT_URL + "/api/devices/metrics/tracplus/"
+RT_DFES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json"
+RT_DFES_METRICS_URL = RT_URL + "/api/devices/metrics/dfes/"
+RT_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json"
+RT_FLEETCARE_METRICS_URL = RT_URL + "/api/devices/metrics/fleetcare/"
 CSW_API = os.environ.get(
     "CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss"
 )
@@ -99,7 +103,7 @@ def healthcheck():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata = session.get(RT_DEVICES_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
@@ -108,15 +112,15 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_DEVICES_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_DEVICES_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_DEVICES_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_DEVICES_URL}")
         d["latest_point"] = None
         d["latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata = session.get(RT_IRIDIUM_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
@@ -125,45 +129,45 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_IRIDIUM_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_IRIDIUM_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_IRIDIUM_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_IRIDIUM_URL}")
         d["iridium_latest_point"] = None
         d["iridium_latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_TRACPLUS_URL)
+        trackingdata = session.get(RT_TRACPLUS_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["tracplus_latest_point"] = t.isoformat()
         d["tracplus_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_TRACPLUS_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_TRACPLUS_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_TRACPLUS_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_TRACPLUS_URL}")
         d["tracplus_latest_point"] = None
         d["tracplus_latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_DFES_URL)
+        trackingdata = session.get(RT_DFES_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["dfes_latest_point"] = t.isoformat()
         d["dfes_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_DFES_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_DFES_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_DFES_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_DFES_URL}")
         d["dfes_latest_point"] = None
         d["dfes_latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_FLEETCARE_URL)
+        trackingdata = session.get(RT_FLEETCARE_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
@@ -172,9 +176,9 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_FLEETCARE_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_FLEETCARE_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
         d["fleetcare_latest_point"] = None
         d["fleetcare_latest_point_delay"] = None
         d["success"] = False
@@ -510,7 +514,7 @@ def resource_tracking_latest():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata = session.get(RT_DEVICES_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
@@ -524,13 +528,13 @@ def resource_tracking_delay():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata = session.get(RT_DEVICES_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} min</button>"
         else:
-            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} min</button>"
     except:
         return "<button class='pure-button button-error'>ERROR</button>"
 
@@ -540,7 +544,7 @@ def iridium_latest():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata = session.get(RT_IRIDIUM_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
@@ -554,13 +558,26 @@ def iridium_delay():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata = session.get(RT_IRIDIUM_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} min</button>"
         else:
-            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} min</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/iridium-loggedpoint-rate")
+def iridium_loggedpoint_rate():
+    session = get_session()
+    try:
+        resp = session.get(RT_IRIDIUM_METRICS_URL)
+        resp.raise_for_status()
+        metrics = resp.json()
+        loggedpoint_rate = int(metrics["logged_point_count"] / metrics["minutes"])
+        return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
     except:
         return "<button class='pure-button button-error'>ERROR</button>"
 
@@ -570,11 +587,24 @@ def tracplus_latest():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_TRACPLUS_URL)
+        trackingdata = session.get(RT_TRACPLUS_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
         return f"<button class='pure-button button-success'>{seen}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/tracplus-loggedpoint-rate")
+def tracplus_loggedpoint_rate():
+    session = get_session()
+    try:
+        resp = session.get(RT_TRACPLUS_METRICS_URL)
+        resp.raise_for_status()
+        metrics = resp.json()
+        loggedpoint_rate = int(metrics["logged_point_count"] / metrics["minutes"])
+        return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
     except:
         return "<button class='pure-button button-error'>ERROR</button>"
 
@@ -584,11 +614,24 @@ def dfes_latest():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_DFES_URL)
+        trackingdata = session.get(RT_DFES_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
         return f"<button class='pure-button button-success'>{seen}</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/dfes-loggedpoint-rate")
+def dfes_loggedpoint_rate():
+    session = get_session()
+    try:
+        resp = session.get(RT_DFES_METRICS_URL)
+        resp.raise_for_status()
+        metrics = resp.json()
+        loggedpoint_rate = int(metrics["logged_point_count"] / metrics["minutes"])
+        return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
     except:
         return "<button class='pure-button button-error'>ERROR</button>"
 
@@ -598,7 +641,7 @@ def fleetcare_latest():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_FLEETCARE_URL)
+        trackingdata = session.get(RT_FLEETCARE_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
@@ -612,13 +655,26 @@ def fleetcare_delay():
     session = get_session()
 
     try:
-        trackingdata = session.get(SSS_FLEETCARE_URL)
+        trackingdata = session.get(RT_FLEETCARE_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} min</button>"
         else:
-            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} min</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/fleetcare-loggedpoint-rate")
+def fleetcare_loggedpoint_rate():
+    session = get_session()
+    try:
+        resp = session.get(RT_FLEETCARE_METRICS_URL)
+        resp.raise_for_status()
+        metrics = resp.json()
+        loggedpoint_rate = int(metrics["logged_point_count"] / metrics["minutes"])
+        return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
     except:
         return "<button class='pure-button button-error'>ERROR</button>"
 
