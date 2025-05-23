@@ -37,7 +37,7 @@ Most settings have default values; check `status.py` for required variables.
 
 Use `python status.py` to run a local copy of the application:
 
-    python status.py
+    python status.py --reload
 
 The application runs on port 8080 by default. To change this, set an environment
 variable value for `PORT`.

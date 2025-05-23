@@ -84,23 +84,13 @@ DBCA_LANDS_WATERS_LAYER = os.environ.get("DBCA_LANDS_WATERS_LAYER", None)
 DBCA_LANDS_WATERS_INTEREST_LAYER = os.environ.get("DBCA_LANDS_WATERS_INTEREST_LAYER", None)
 
 
-@app.route("/readiness")
-def readiness():
-    return "OK"
-
-
-@app.route("/liveness")
-def liveness():
-    return "OK"
-
-
 def get_session():
     session = requests.Session()
     session.auth = (USER_SSO, PASS_SSO)
     return session
 
 
-def healthcheck():
+def get_healthcheck():
     """Query HTTP sources and derive a dictionary of response successes."""
     d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
 
@@ -312,9 +302,19 @@ def healthcheck():
     return d
 
 
+@app.route("/readiness")
+def readiness():
+    return "OK"
+
+
+@app.route("/liveness")
+def liveness():
+    return "OK"
+
+
 @app.route("/json")
 def healthcheck_json():
-    d = healthcheck()
+    d = get_healthcheck()
     response.content_type = "application/json"
     if CACHE_RESPONSE:
         # Mark response as "cache for 60 seconds".
@@ -334,7 +334,7 @@ def healthcheck_json():
 # Retain legacy health check route for PRTG.
 @app.route("/legacy")
 def index_legacy():
-    d = healthcheck()
+    d = get_healthcheck()
     output = f"<p>Server time: {d['server_time']}</p>\n"
     output += "<p>\n"
 
@@ -659,7 +659,7 @@ def todays_burns():
         return "<button class='pure-button button-error'>ERROR</button>"
 
 
-def get_kmi_layer(kmi_layer):
+def get_kmi_layer(kmi_layer) -> bool:
     # Common parameters to send with every GetTile request to KMI Geoserver.
     params = {
         "service": "WMTS",
@@ -690,121 +690,26 @@ def get_kmi_layer(kmi_layer):
         return False
 
 
-@app.route("/api/dbca-going-bushfires")
-def dbca_going_bushfires():
-    if get_kmi_layer(DBCA_GOING_BUSHFIRES_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-control-lines")
-def dbca_control_lines():
-    if get_kmi_layer(DBCA_CONTROL_LINES_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dfes-going-bushfires")
-def dfes_going_bushfires():
-    if get_kmi_layer(DFES_GOING_BUSHFIRES_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/current-hotspots")
-def current_hotspots():
-    if get_kmi_layer(ALL_CURRENT_HOTSPOTS_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/lightning-24h")
-def lightning_24h():
-    if get_kmi_layer(LIGHTNING_24H_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/lightning-24-48h")
-def lightning_24_48h():
-    if get_kmi_layer(LIGHTNING_24_48H_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/lightning-48-72h")
-def lightning_48_72h():
-    if get_kmi_layer(LIGHTNING_48_72H_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/fuel-age-1-6y")
-def fuel_age_1_6y():
-    if get_kmi_layer(FUEL_AGE_1_6Y_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/fuel-age-nonforest-1-6y")
-def fuel_age_nonforest_1_6y():
-    if get_kmi_layer(FUEL_AGE_NONFOREST_1_6Y_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/cog-basemap")
-def cog_basemap():
-    if get_kmi_layer(COG_BASEMAP_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/state-basemap")
-def state_basemap():
-    if get_kmi_layer(STATE_BASEMAP_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-burn-program")
-def dbca_burn_program():
-    if get_kmi_layer(DBCA_BURN_PROGRAM_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/daily-active-burns")
-def daily_active_burns():
-    if get_kmi_layer(DAILY_ACTIVE_BURNS_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-lands-waters")
-def dbca_land_waters():
-    if get_kmi_layer(DBCA_LANDS_WATERS_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-lands-waters-interest")
-def dbca_land_waters_interest():
-    if get_kmi_layer(DBCA_LANDS_WATERS_INTEREST_LAYER):
+@app.route("/api/kmi/<kmi_layer>")
+def kmi_layer_responds(kmi_layer) -> str:
+    layer_map = {
+        "dbca-going-bushfires": DBCA_GOING_BUSHFIRES_LAYER,
+        "dbca-control-lines": DBCA_CONTROL_LINES_LAYER,
+        "dfes-going-bushfires": DFES_GOING_BUSHFIRES_LAYER,
+        "current-hotspots": ALL_CURRENT_HOTSPOTS_LAYER,
+        "lightning-24h": LIGHTNING_24H_LAYER,
+        "lightning-24-48h": LIGHTNING_24_48H_LAYER,
+        "lightning-48-72h": LIGHTNING_48_72H_LAYER,
+        "fuel-age-1-6y": FUEL_AGE_1_6Y_LAYER,
+        "fuel-age-nonforest-1-6y": FUEL_AGE_NONFOREST_1_6Y_LAYER,
+        "cog-basemap": COG_BASEMAP_LAYER,
+        "state-basemap": STATE_BASEMAP_LAYER,
+        "dbca-burn-program": DBCA_BURN_PROGRAM_LAYER,
+        "daily-active-burns": DAILY_ACTIVE_BURNS_LAYER,
+        "dbca-lands-waters": DBCA_LANDS_WATERS_LAYER,
+        "dbca-lands-waters-interest": DBCA_LANDS_WATERS_INTEREST_LAYER,
+    }
+    if get_kmi_layer(layer_map[kmi_layer]):
         return "<button class='pure-button button-success'>OK</button>"
     else:
         return "<button class='pure-button button-error'>ERROR</button>"
