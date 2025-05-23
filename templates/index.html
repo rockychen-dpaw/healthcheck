@@ -43,17 +43,16 @@
   </head>
   <body>
     <h3>DBCA Spatial Support System health checks</h3>
+
     <div class="pure-g">
-      <div class="pure-u-1-2 pure-u-lg-1-6">Tracking latest point:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">Tracking latest:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/all-sources/latest" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-lg-1-3"></div>
-
-      <div class="pure-u-1-2 pure-u-lg-1-6">Resource tracking delay:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">Tracking delay:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/all-sources/delay" hx-trigger="load">
           <button class="pure-button">Loading</button>
@@ -66,14 +65,12 @@
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-1-2 pure-u-lg-1-6">Iridium tracking rate:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/iridium/loggedpoint-rate" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-1-2 pure-u-lg-1-6">Iridium tracking delay:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/iridium/delay" hx-trigger="load">
@@ -87,14 +84,12 @@
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-1-2 pure-u-lg-1-6">Tracplus tracking rate:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/tracplus/loggedpoint-rate" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-lg-1-3"></div>
 
       <div class="pure-u-1-2 pure-u-lg-1-6">DFES latest tracking:</div>
@@ -103,14 +98,12 @@
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-1-2 pure-u-lg-1-6">DFES tracking rate:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/dfes/loggedpoint-rate" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-lg-1-3"></div>
 
       <div class="pure-u-1-2 pure-u-lg-1-6">Fleetcare latest tracking:</div>
@@ -119,14 +112,12 @@
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-1-2 pure-u-lg-1-6">Fleetcare tracking rate:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/fleetcare/loggedpoint-rate" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-1-2 pure-u-lg-1-6">Fleetcare tracking delay:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/fleetcare/delay" hx-trigger="load">
@@ -140,144 +131,163 @@
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-1-2 pure-u-lg-1-6">Netstar tracking rate:</div>
       <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/netstar/loggedpoint-rate" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-
       <div class="pure-u-lg-1-3"></div>
     </div>
 
     <hr />
 
     <div class="pure-g">
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">KMI WMTS layers:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
+      <div class="pure-u-1-2 pure-u-lg-1-6">KMI WMTS layers:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/kmi-wmts-layers" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1 pure-u-lg-2-4"></div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">CSW spatial catalogue:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
+      <div class="pure-u-1-2 pure-u-lg-1-6">CSW spatial catalogue:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/csw-layers" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">BFRS profile API:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">BFRS profile API:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/bfrs-status" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Auth2 status:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
+      <div class="pure-u-1-2 pure-u-lg-1-6">Auth2 status:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/auth2-status" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Today's burns count:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">Today's burns count:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
         <div hx-get="/api/todays-burns" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
+      <div class="pure-u-lg-2-3"></div>
     </div>
+
     <hr />
+
     <div class="pure-g">
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">DBCA Going Bushfires:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/dbca-going-bushfires" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">DBCA Going Bushfires:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/dbca-going-bushfires" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">DBCA Control Lines:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/dbca-control-lines" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">DBCA Control Lines:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/dbca-control-lines" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">DFES Going Bushfires:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/dfes-going-bushfires" hx-trigger="load">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">DFES Going Bushfires:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/dfes-going-bushfires" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">All current hotspots:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/current-hotspots" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">All current hotspots:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/current-hotspots" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Lightning 24h:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/lightning-24h" hx-trigger="load">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">Lightning 24h:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/lightning-24h" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Lightning 24-48h:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/lightning-24-48h" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">Lightning 24-48h:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/lightning-24-48h" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Lightning 48-72h:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/lightning-48-72h" hx-trigger="load">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">Lightning 48-72h:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/lightning-48-72h" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Fuel age 1-6+ years:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/fuel-age-1-6y" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">Fuel age 1-6+ years:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/fuel-age-1-6y" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Fuel age non forest 1-6+ years:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/fuel-age-nonforest-1-6y" hx-trigger="load">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">Fuel age non forest 1-6+ years:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/fuel-age-nonforest-1-6y" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">COG basemap:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/cog-basemap" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">COG basemap:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/cog-basemap" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">State basemap:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/state-basemap" hx-trigger="load">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">State basemap:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/state-basemap" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">DBCA burn options program:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/dbca-burn-program" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">DBCA burn options program:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/dbca-burn-program" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">Daily active and planned prescribed burns:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/daily-active-burns" hx-trigger="load">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">Daily active and planned prescribed burns:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/daily-active-burns" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">DBCA legislated lands and waters:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/dbca-lands-waters" hx-trigger="load">
+      <div class="pure-u-1-2 pure-u-lg-1-6">DBCA legislated lands and waters:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/dbca-lands-waters" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
-      <div class="pure-u-1-2 pure-u-md-1-3 pure-u-lg-1-4">DBCA lands and waters of interest:</div>
-      <div class="pure-u-1-2 pure-u-md-2-3 pure-u-lg-1-4">
-        <div hx-get="/api/dbca-lands-waters-interest" hx-trigger="load">
+      <div class="pure-u-lg-1-3"></div>
+
+      <div class="pure-u-1-2 pure-u-lg-1-6">DBCA lands and waters of interest:</div>
+      <div class="pure-u-1-2 pure-u-lg-1-6">
+        <div hx-get="/api/kmi/dbca-lands-waters-interest" hx-trigger="load">
           <button class="pure-button">Loading</button>
         </div>
       </div>
+      <div class="pure-u-lg-2-3"></div>
     </div>
   </body>
 </html>
