@@ -131,6 +131,18 @@ def get_healthcheck():
         d["success"] = False
 
     try:
+        resp = session.get(RT_IRIDIUM_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["iridium_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_IRIDIUM_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_IRIDIUM_METRICS_URL}")
+        d["iridium_loggedpoint_rate_min"] = None
+        d["success"] = False
+
+    try:
         trackingdata = session.get(RT_TRACPLUS_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
@@ -143,6 +155,18 @@ def get_healthcheck():
         d["errors"].append(f"Error querying Resource Tracking: {RT_TRACPLUS_URL}")
         d["tracplus_latest_point"] = None
         d["tracplus_latest_point_delay"] = None
+        d["success"] = False
+
+    try:
+        resp = session.get(RT_TRACPLUS_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["tracplus_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_TRACPLUS_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_TRACPLUS_METRICS_URL}")
+        d["tracplus_loggedpoint_rate_min"] = None
         d["success"] = False
 
     try:
@@ -161,6 +185,18 @@ def get_healthcheck():
         d["success"] = False
 
     try:
+        resp = session.get(RT_DFES_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["dfes_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_DFES_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_DFES_METRICS_URL}")
+        d["dfes_loggedpoint_rate_min"] = None
+        d["success"] = False
+
+    try:
         trackingdata = session.get(RT_FLEETCARE_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
@@ -175,6 +211,47 @@ def get_healthcheck():
         d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
         d["fleetcare_latest_point"] = None
         d["fleetcare_latest_point_delay"] = None
+        d["success"] = False
+
+    try:
+        resp = session.get(RT_FLEETCARE_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["fleetcare_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_METRICS_URL}")
+        d["fleetcare_loggedpoint_rate_min"] = None
+        d["success"] = False
+
+    try:
+        trackingdata = session.get(RT_NETSTAR_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+        d["netstar_latest_point"] = t.isoformat()
+        d["netstar_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            d["success"] = False
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
+        d["netstar_latest_point"] = None
+        d["netstar_latest_point_delay"] = None
+        d["success"] = False
+
+    try:
+        resp = session.get(RT_NETSTAR_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["netstar_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_NETSTAR_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_NETSTAR_METRICS_URL}")
+        d["netstar_loggedpoint_rate_min"] = None
         d["success"] = False
 
     try:
