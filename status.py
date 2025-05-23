@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import defusedxml.ElementTree as ET
 import humanize
 import requests
-from quart import Quart, make_response, render_template
+from quart import Quart, helpers, make_response, render_template
 
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
@@ -20,11 +20,16 @@ app = application = Quart(__name__, template_folder="templates")
 # Configure logging.
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+formatter = logging.Formatter("{asctime} | {levelname} | {message}", style="{")
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
 handler.setFormatter(formatter)
 LOGGER.addHandler(handler)
+
+# Set Cache-Control headers or not.
+CACHE_RESPONSE = os.getenv("CACHE_RESPONSE")
+if CACHE_RESPONSE:
+    CACHE_RESPONSE = CACHE_RESPONSE == "True"
 
 TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))
 OUTPUT_TEMPLATE_LEGACY = """<!DOCTYPE html>
@@ -39,7 +44,6 @@ OUTPUT_TEMPLATE_LEGACY = """<!DOCTYPE html>
 {}
 </body>
 </html>"""
-CACHE_RESPONSE = os.environ.get("CACHE_RESPONSE", False)
 RT_URL = os.environ.get("RT_URL", "https://resourcetracking.dbca.wa.gov.au")
 TRACKING_POINTS_MAX_DELAY = int(os.environ.get("TRACKING_POINTS_MAX_DELAY", 30))  # Minutes
 RT_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
@@ -577,6 +581,12 @@ async def index_legacy():
         response.headers["Cache-Control"] = "max-age=60"
 
     return response
+
+
+@app.route("/favicon.ico")
+async def favicon():
+    """Redirect to the static asset."""
+    return helpers.redirect("/static/favicon.ico")
 
 
 @app.route("/")
