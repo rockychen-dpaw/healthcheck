@@ -54,9 +54,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Run Python unbuffered
 ENV PYTHONUNBUFFERED=1
 
-COPY gunicorn.py status.py ./
+COPY hypercorn.toml status.py ./
 COPY static ./static
 COPY templates ./templates
 USER app
 EXPOSE 8080
-CMD ["gunicorn", "status:application", "--config", "gunicorn.py"]
+CMD ["hypercorn", "status:application", "--config", "hypercorn.toml"]

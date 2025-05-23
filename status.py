@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -8,14 +7,14 @@ from zoneinfo import ZoneInfo
 import defusedxml.ElementTree as ET
 import humanize
 import requests
-from bottle import Bottle, response, static_file
+from quart import Quart, make_response, render_template
 
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
     from dotenv import load_dotenv
 
     load_dotenv()
-app = application = Bottle()
+app = application = Quart(__name__, template_folder="templates")
 
 
 # Configure logging.
@@ -28,7 +27,7 @@ handler.setFormatter(formatter)
 LOGGER.addHandler(handler)
 
 TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))
-OUTPUT_TEMPLATE = """<!DOCTYPE html>
+OUTPUT_TEMPLATE_LEGACY = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -40,7 +39,7 @@ OUTPUT_TEMPLATE = """<!DOCTYPE html>
 {}
 </body>
 </html>"""
-CACHE_RESPONSE = os.environ.get("CACHE_RESPONSE", True)
+CACHE_RESPONSE = os.environ.get("CACHE_RESPONSE", False)
 RT_URL = os.environ.get("RT_URL", "https://resourcetracking.dbca.wa.gov.au")
 TRACKING_POINTS_MAX_DELAY = int(os.environ.get("TRACKING_POINTS_MAX_DELAY", 30))  # Minutes
 RT_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
@@ -55,9 +54,7 @@ RT_FLEETCARE_METRICS_URL = RT_URL + "/api/devices/metrics/fleetcare/"
 RT_NETSTAR_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=netstar&format=json"
 RT_NETSTAR_METRICS_URL = RT_URL + "/api/devices/metrics/netstar/"
 
-CSW_API = os.environ.get(
-    "CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss"
-)
+CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss")
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
 KMI_WFS_URL = f"{KMI_URL}/ows"
 KMI_WMTS_URL = f"{KMI_URL}/gwc/service/wmts"
@@ -84,17 +81,17 @@ DBCA_LANDS_WATERS_LAYER = os.environ.get("DBCA_LANDS_WATERS_LAYER", None)
 DBCA_LANDS_WATERS_INTEREST_LAYER = os.environ.get("DBCA_LANDS_WATERS_INTEREST_LAYER", None)
 
 
-def get_session():
+def get_session() -> requests.Session:
+    """Return a requests Session object having auth set."""
     session = requests.Session()
     session.auth = (USER_SSO, PASS_SSO)
     return session
 
 
-def get_healthcheck():
-    """Query HTTP sources and derive a dictionary of response successes."""
-    d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
-
+def get_healthcheck() -> dict:
+    """Query HTTP sources and return a dictionary of response successes."""
     session = get_session()
+    d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
 
     try:
         trackingdata = session.get(RT_DEVICES_URL)
@@ -380,25 +377,24 @@ def get_healthcheck():
 
 
 @app.route("/readiness")
-def readiness():
+async def readiness():
     return "OK"
 
 
 @app.route("/liveness")
-def liveness():
+async def liveness():
     return "OK"
 
 
 @app.route("/json")
-def healthcheck_json():
-    d = get_healthcheck()
-    response.content_type = "application/json"
-    if CACHE_RESPONSE:
-        # Mark response as "cache for 60 seconds".
-        response.set_header("Cache-Control", "max-age=60")
-
+async def healthcheck_json():
     try:
-        return json.dumps(d)
+        d = get_healthcheck()
+        response = await make_response(d)
+        if CACHE_RESPONSE:
+            # Mark response as "cache for 60 seconds".
+            response.headers["Cache-Control"] = "max-age=60"
+        return response
     except Exception as e:
         LOGGER.warning("Error serialising healthcheck response as JSON")
         LOGGER.warning(e)
@@ -410,7 +406,7 @@ def healthcheck_json():
 
 # Retain legacy health check route for PRTG.
 @app.route("/legacy")
-def index_legacy():
+async def index_legacy():
     d = get_healthcheck()
     output = f"<p>Server time: {d['server_time']}</p>\n"
     output += "<p>\n"
@@ -574,24 +570,22 @@ def index_legacy():
         output += "<strong>Finished checks, something is wrong =(</strong>"
     output += "</p>"
 
+    response = await make_response(OUTPUT_TEMPLATE_LEGACY.format(output))
+
     if CACHE_RESPONSE:
         # Mark response as "cache for 60 seconds".
-        response.set_header("Cache-Control", "max-age=60")
-    return OUTPUT_TEMPLATE.format(output)
+        response.headers["Cache-Control"] = "max-age=60"
 
-
-@app.route("/favicon.ico", method="GET")
-def get_favicon():
-    return static_file("favicon.ico", root="static/images/")
+    return response
 
 
 @app.route("/")
-def index():
-    return static_file("index.html", root="templates")
+async def index():
+    return await render_template("index.html")
 
 
 @app.route("/api/<source>/latest")
-def source_latest(source):
+async def source_latest(source):
     session = get_session()
 
     endpoint_map = {
@@ -614,7 +608,7 @@ def source_latest(source):
 
 
 @app.route("/api/<source>/loggedpoint-rate")
-def source_loggedpoint_rate(source):
+async def source_loggedpoint_rate(source):
     session = get_session()
 
     endpoint_map = {
@@ -638,7 +632,7 @@ def source_loggedpoint_rate(source):
 
 
 @app.route("/api/<source>/delay")
-def source_delay(source):
+async def source_delay(source):
     session = get_session()
 
     endpoint_map = {
@@ -660,7 +654,7 @@ def source_delay(source):
 
 
 @app.route("/api/kmi-wmts-layers")
-def kmi_wmts_layers():
+async def kmi_wmts_layers():
     session = get_session()
 
     try:
@@ -677,7 +671,7 @@ def kmi_wmts_layers():
 
 
 @app.route("/api/csw-layers")
-def csw_layers():
+async def csw_layers():
     session = get_session()
 
     try:
@@ -691,7 +685,7 @@ def csw_layers():
 
 
 @app.route("/api/bfrs-status")
-def bfrs_status():
+async def bfrs_status():
     session = get_session()
 
     try:
@@ -703,7 +697,7 @@ def bfrs_status():
 
 
 @app.route("/api/auth2-status")
-def auth2_status():
+async def auth2_status():
     session = get_session()
 
     try:
@@ -715,7 +709,7 @@ def auth2_status():
 
 
 @app.route("/api/todays-burns")
-def todays_burns():
+async def todays_burns():
     params = {
         "service": "wfs",
         "version": "1.1.0",
@@ -737,7 +731,7 @@ def todays_burns():
 
 
 def get_kmi_layer(kmi_layer) -> bool:
-    # Common parameters to send with every GetTile request to KMI Geoserver.
+    """Query KMI WMTS and return boolean if the service responds or not."""
     params = {
         "service": "WMTS",
         "version": "1.0.0",
@@ -768,7 +762,7 @@ def get_kmi_layer(kmi_layer) -> bool:
 
 
 @app.route("/api/kmi/<kmi_layer>")
-def kmi_layer_responds(kmi_layer) -> str:
+async def kmi_layer_responds(kmi_layer):
     layer_map = {
         "dbca-going-bushfires": DBCA_GOING_BUSHFIRES_LAYER,
         "dbca-control-lines": DBCA_CONTROL_LINES_LAYER,
@@ -790,14 +784,3 @@ def kmi_layer_responds(kmi_layer) -> str:
         return "<button class='pure-button button-success'>OK</button>"
     else:
         return "<button class='pure-button button-error'>ERROR</button>"
-
-
-if __name__ == "__main__":
-    from bottle import run
-
-    run(
-        application,
-        host="0.0.0.0",
-        port=os.environ.get("PORT", 8080),
-        reloader=True,
-    )
