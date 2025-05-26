@@ -794,3 +794,7 @@ async def kmi_layer_responds(kmi_layer):
         return "<button class='pure-button button-success'>OK</button>"
     else:
         return "<button class='pure-button button-error'>ERROR</button>"
+
+
+if __name__ == "__main__":
+    application.run(host="0.0.0.0", port=os.environ.get("PORT", 8080), use_reloader=True)

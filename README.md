@@ -37,6 +37,8 @@ Most settings have default values; check `status.py` for required variables.
 
 To run a local copy of the application:
 
+    python status.py
+    # Serve via HyperCorn instead of Quart:
     hypercorn status:application --config hypercorn.toml --reload
 
 The application runs on port 8080 by default. To change this, modify `hypercorn.toml`.
