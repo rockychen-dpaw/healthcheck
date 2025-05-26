@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -8,27 +7,32 @@ from zoneinfo import ZoneInfo
 import defusedxml.ElementTree as ET
 import humanize
 import requests
-from bottle import Bottle, response, static_file
+from quart import Quart, helpers, make_response, render_template
 
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
     from dotenv import load_dotenv
 
     load_dotenv()
-app = application = Bottle()
+app = application = Quart(__name__, template_folder="templates")
 
 
 # Configure logging.
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+formatter = logging.Formatter("{asctime} | {levelname} | {message}", style="{")
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
 handler.setFormatter(formatter)
 LOGGER.addHandler(handler)
 
+# Set Cache-Control headers or not.
+CACHE_RESPONSE = os.getenv("CACHE_RESPONSE")
+if CACHE_RESPONSE:
+    CACHE_RESPONSE = CACHE_RESPONSE == "True"
+
 TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))
-OUTPUT_TEMPLATE = """<!DOCTYPE html>
+OUTPUT_TEMPLATE_LEGACY = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -40,25 +44,30 @@ OUTPUT_TEMPLATE = """<!DOCTYPE html>
 {}
 </body>
 </html>"""
-CACHE_RESPONSE = os.environ.get("CACHE_RESPONSE", True)
 RT_URL = os.environ.get("RT_URL", "https://resourcetracking.dbca.wa.gov.au")
-SSS_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
-SSS_IRIDIUM_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json"
-SSS_TRACPLUS_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json"
-SSS_DFES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json"
-SSS_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json"
-CSW_API = os.environ.get(
-    "CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss"
-)
+TRACKING_POINTS_MAX_DELAY = int(os.environ.get("TRACKING_POINTS_MAX_DELAY", 30))  # Minutes
+RT_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
+RT_IRIDIUM_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=iriditrak&format=json"
+RT_IRIDIUM_METRICS_URL = RT_URL + "/api/devices/metrics/iriditrak/"
+RT_TRACPLUS_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=tracplus&format=json"
+RT_TRACPLUS_METRICS_URL = RT_URL + "/api/devices/metrics/tracplus/"
+RT_DFES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=dfes&format=json"
+RT_DFES_METRICS_URL = RT_URL + "/api/devices/metrics/dfes/"
+RT_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=fleetcare&format=json"
+RT_FLEETCARE_METRICS_URL = RT_URL + "/api/devices/metrics/fleetcare/"
+RT_NETSTAR_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=netstar&format=json"
+RT_NETSTAR_METRICS_URL = RT_URL + "/api/devices/metrics/netstar/"
+
+CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss")
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
 KMI_WFS_URL = f"{KMI_URL}/ows"
 KMI_WMTS_URL = f"{KMI_URL}/gwc/service/wmts"
 BFRS_URL = os.environ.get("BFRS_URL", "https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json")
 AUTH2_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/healthcheck")
 AUTH2_STATUS_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/status")
+
 USER_SSO = os.environ.get("USER_SSO", "asi@dbca.wa.gov.au")
 PASS_SSO = os.environ.get("PASS_SSO", "password")
-TRACKING_POINTS_MAX_DELAY = int(os.environ.get("TRACKING_POINTS_MAX_DELAY", 30))  # Minutes
 DBCA_GOING_BUSHFIRES_LAYER = os.environ.get("DBCA_GOING_BUSHFIRES_LAYER", None)
 DBCA_CONTROL_LINES_LAYER = os.environ.get("DBCA_CONTROL_LINES_LAYER", None)
 DFES_GOING_BUSHFIRES_LAYER = os.environ.get("DFES_GOING_BUSHFIRES_LAYER", None)
@@ -76,30 +85,20 @@ DBCA_LANDS_WATERS_LAYER = os.environ.get("DBCA_LANDS_WATERS_LAYER", None)
 DBCA_LANDS_WATERS_INTEREST_LAYER = os.environ.get("DBCA_LANDS_WATERS_INTEREST_LAYER", None)
 
 
-@app.route("/readiness")
-def readiness():
-    return "OK"
-
-
-@app.route("/liveness")
-def liveness():
-    return "OK"
-
-
-def get_session():
+def get_session() -> requests.Session:
+    """Return a requests Session object having auth set."""
     session = requests.Session()
     session.auth = (USER_SSO, PASS_SSO)
     return session
 
 
-def healthcheck():
-    """Query HTTP sources and derive a dictionary of response successes."""
+def get_healthcheck() -> dict:
+    """Query HTTP sources and return a dictionary of response successes."""
+    session = get_session()
     d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
 
-    session = get_session()
-
     try:
-        trackingdata = session.get(SSS_DEVICES_URL)
+        trackingdata = session.get(RT_DEVICES_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
@@ -108,15 +107,15 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_DEVICES_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_DEVICES_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_DEVICES_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_DEVICES_URL}")
         d["latest_point"] = None
         d["latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_IRIDIUM_URL)
+        trackingdata = session.get(RT_IRIDIUM_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
@@ -125,45 +124,81 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_IRIDIUM_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_IRIDIUM_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_IRIDIUM_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_IRIDIUM_URL}")
         d["iridium_latest_point"] = None
         d["iridium_latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_TRACPLUS_URL)
+        resp = session.get(RT_IRIDIUM_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["iridium_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_IRIDIUM_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_IRIDIUM_METRICS_URL}")
+        d["iridium_loggedpoint_rate_min"] = None
+        d["success"] = False
+
+    try:
+        trackingdata = session.get(RT_TRACPLUS_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["tracplus_latest_point"] = t.isoformat()
         d["tracplus_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_TRACPLUS_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_TRACPLUS_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_TRACPLUS_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_TRACPLUS_URL}")
         d["tracplus_latest_point"] = None
         d["tracplus_latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_DFES_URL)
+        resp = session.get(RT_TRACPLUS_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["tracplus_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_TRACPLUS_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_TRACPLUS_METRICS_URL}")
+        d["tracplus_loggedpoint_rate_min"] = None
+        d["success"] = False
+
+    try:
+        trackingdata = session.get(RT_DFES_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
         d["dfes_latest_point"] = t.isoformat()
         d["dfes_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_DFES_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_DFES_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_DFES_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_DFES_URL}")
         d["dfes_latest_point"] = None
         d["dfes_latest_point_delay"] = None
         d["success"] = False
 
     try:
-        trackingdata = session.get(SSS_FLEETCARE_URL)
+        resp = session.get(RT_DFES_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["dfes_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_DFES_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_DFES_METRICS_URL}")
+        d["dfes_loggedpoint_rate_min"] = None
+        d["success"] = False
+
+    try:
+        trackingdata = session.get(RT_FLEETCARE_URL)
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
@@ -172,11 +207,52 @@ def healthcheck():
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
     except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {SSS_FLEETCARE_URL}")
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
         LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {SSS_FLEETCARE_URL}")
+        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
         d["fleetcare_latest_point"] = None
         d["fleetcare_latest_point_delay"] = None
+        d["success"] = False
+
+    try:
+        resp = session.get(RT_FLEETCARE_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["fleetcare_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_METRICS_URL}")
+        d["fleetcare_loggedpoint_rate_min"] = None
+        d["success"] = False
+
+    try:
+        trackingdata = session.get(RT_NETSTAR_URL)
+        trackingdata.raise_for_status()
+        trackingdata = trackingdata.json()
+        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+        d["netstar_latest_point"] = t.isoformat()
+        d["netstar_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
+        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+            d["success"] = False
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
+        d["netstar_latest_point"] = None
+        d["netstar_latest_point_delay"] = None
+        d["success"] = False
+
+    try:
+        resp = session.get(RT_NETSTAR_METRICS_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        d["netstar_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+    except Exception as e:
+        LOGGER.warning(f"Error querying Resource Tracking: {RT_NETSTAR_METRICS_URL}")
+        LOGGER.warning(e)
+        d["errors"].append(f"Error querying Resource Tracking: {RT_NETSTAR_METRICS_URL}")
+        d["netstar_loggedpoint_rate_min"] = None
         d["success"] = False
 
     try:
@@ -304,16 +380,25 @@ def healthcheck():
     return d
 
 
-@app.route("/json")
-def healthcheck_json():
-    d = healthcheck()
-    response.content_type = "application/json"
-    if CACHE_RESPONSE:
-        # Mark response as "cache for 60 seconds".
-        response.set_header("Cache-Control", "max-age=60")
+@app.route("/readiness")
+async def readiness():
+    return "OK"
 
+
+@app.route("/liveness")
+async def liveness():
+    return "OK"
+
+
+@app.route("/json")
+async def healthcheck_json():
     try:
-        return json.dumps(d)
+        d = get_healthcheck()
+        response = await make_response(d)
+        if CACHE_RESPONSE:
+            # Mark response as "cache for 60 seconds".
+            response.headers["Cache-Control"] = "max-age=60"
+        return response
     except Exception as e:
         LOGGER.warning("Error serialising healthcheck response as JSON")
         LOGGER.warning(e)
@@ -325,8 +410,8 @@ def healthcheck_json():
 
 # Retain legacy health check route for PRTG.
 @app.route("/legacy")
-def index_legacy():
-    d = healthcheck()
+async def index_legacy():
+    d = get_healthcheck()
     output = f"<p>Server time: {d['server_time']}</p>\n"
     output += "<p>\n"
 
@@ -489,142 +574,97 @@ def index_legacy():
         output += "<strong>Finished checks, something is wrong =(</strong>"
     output += "</p>"
 
+    response = await make_response(OUTPUT_TEMPLATE_LEGACY.format(output))
+
     if CACHE_RESPONSE:
         # Mark response as "cache for 60 seconds".
-        response.set_header("Cache-Control", "max-age=60")
-    return OUTPUT_TEMPLATE.format(output)
+        response.headers["Cache-Control"] = "max-age=60"
+
+    return response
 
 
-@app.route("/favicon.ico", method="GET")
-def get_favicon():
-    return static_file("favicon.ico", root="static/images/")
+@app.route("/favicon.ico")
+async def favicon():
+    """Redirect to the static asset."""
+    return helpers.redirect("/static/favicon.ico")
 
 
 @app.route("/")
-def index():
-    return static_file("index.html", root="templates")
+async def index():
+    return await render_template("index.html")
 
 
-@app.route("/api/resource-tracking-latest")
-def resource_tracking_latest():
+@app.route("/api/<source>/latest")
+async def source_latest(source):
     session = get_session()
 
+    endpoint_map = {
+        "all-sources": RT_DEVICES_URL,
+        "iridium": RT_IRIDIUM_URL,
+        "tracplus": RT_TRACPLUS_URL,
+        "dfes": RT_DFES_URL,
+        "fleetcare": RT_FLEETCARE_URL,
+        "netstar": RT_NETSTAR_URL,
+    }
+
     try:
-        trackingdata = session.get(SSS_DEVICES_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
+        resp = session.get(endpoint_map[source])
+        resp.raise_for_status()
+        data = resp.json()
+        seen = humanize.naturaltime(datetime.fromisoformat(data["objects"][0]["seen"]))
         return f"<button class='pure-button button-success'>{seen}</button>"
     except:
         return "<button class='pure-button button-error'>ERROR</button>"
 
 
-@app.route("/api/resource-tracking-delay")
-def resource_tracking_delay():
+@app.route("/api/<source>/loggedpoint-rate")
+async def source_loggedpoint_rate(source):
     session = get_session()
 
+    endpoint_map = {
+        "iridium": RT_IRIDIUM_METRICS_URL,
+        "tracplus": RT_TRACPLUS_METRICS_URL,
+        "dfes": RT_DFES_METRICS_URL,
+        "fleetcare": RT_FLEETCARE_METRICS_URL,
+        "netstar": RT_NETSTAR_METRICS_URL,
+    }
+
     try:
-        trackingdata = session.get(SSS_DEVICES_URL)
+        resp = session.get(endpoint_map[source])
+        resp.raise_for_status()
+        data = resp.json()
+        loggedpoint_rate = int(data["logged_point_count"] / data["minutes"])
+        if loggedpoint_rate < 1:
+            loggedpoint_rate = "<1"
+        return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
+    except:
+        return "<button class='pure-button button-error'>ERROR</button>"
+
+
+@app.route("/api/<source>/delay")
+async def source_delay(source):
+    session = get_session()
+
+    endpoint_map = {
+        "all-sources": RT_DEVICES_URL,
+        "iridium": RT_IRIDIUM_URL,
+        "fleetcare": RT_FLEETCARE_URL,
+    }
+
+    try:
+        trackingdata = session.get(endpoint_map[source])
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} min</button>"
         else:
-            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
-    except:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/iridium-latest")
-def iridium_latest():
-    session = get_session()
-
-    try:
-        trackingdata = session.get(SSS_IRIDIUM_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
-        return f"<button class='pure-button button-success'>{seen}</button>"
-    except:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/iridium-delay")
-def iridium_delay():
-    session = get_session()
-
-    try:
-        trackingdata = session.get(SSS_IRIDIUM_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
-        else:
-            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
-    except:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/tracplus-latest")
-def tracplus_latest():
-    session = get_session()
-
-    try:
-        trackingdata = session.get(SSS_TRACPLUS_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
-        return f"<button class='pure-button button-success'>{seen}</button>"
-    except:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dfes-latest")
-def dfes_latest():
-    session = get_session()
-
-    try:
-        trackingdata = session.get(SSS_DFES_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
-        return f"<button class='pure-button button-success'>{seen}</button>"
-    except:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/fleetcare-latest")
-def fleetcare_latest():
-    session = get_session()
-
-    try:
-        trackingdata = session.get(SSS_FLEETCARE_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        seen = humanize.naturaltime(datetime.fromisoformat(trackingdata["objects"][0]["seen"]))
-        return f"<button class='pure-button button-success'>{seen}</button>"
-    except:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/fleetcare-delay")
-def fleetcare_delay():
-    session = get_session()
-
-    try:
-        trackingdata = session.get(SSS_FLEETCARE_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} minutes</button>"
-        else:
-            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} minutes</button>"
+            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} min</button>"
     except:
         return "<button class='pure-button button-error'>ERROR</button>"
 
 
 @app.route("/api/kmi-wmts-layers")
-def kmi_wmts_layers():
+async def kmi_wmts_layers():
     session = get_session()
 
     try:
@@ -641,7 +681,7 @@ def kmi_wmts_layers():
 
 
 @app.route("/api/csw-layers")
-def csw_layers():
+async def csw_layers():
     session = get_session()
 
     try:
@@ -655,7 +695,7 @@ def csw_layers():
 
 
 @app.route("/api/bfrs-status")
-def bfrs_status():
+async def bfrs_status():
     session = get_session()
 
     try:
@@ -667,7 +707,7 @@ def bfrs_status():
 
 
 @app.route("/api/auth2-status")
-def auth2_status():
+async def auth2_status():
     session = get_session()
 
     try:
@@ -679,7 +719,7 @@ def auth2_status():
 
 
 @app.route("/api/todays-burns")
-def todays_burns():
+async def todays_burns():
     params = {
         "service": "wfs",
         "version": "1.1.0",
@@ -700,8 +740,8 @@ def todays_burns():
         return "<button class='pure-button button-error'>ERROR</button>"
 
 
-def get_kmi_layer(kmi_layer):
-    # Common parameters to send with every GetTile request to KMI Geoserver.
+def get_kmi_layer(kmi_layer) -> bool:
+    """Query KMI WMTS and return boolean if the service responds or not."""
     params = {
         "service": "WMTS",
         "version": "1.0.0",
@@ -731,132 +771,30 @@ def get_kmi_layer(kmi_layer):
         return False
 
 
-@app.route("/api/dbca-going-bushfires")
-def dbca_going_bushfires():
-    if get_kmi_layer(DBCA_GOING_BUSHFIRES_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-control-lines")
-def dbca_control_lines():
-    if get_kmi_layer(DBCA_CONTROL_LINES_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dfes-going-bushfires")
-def dfes_going_bushfires():
-    if get_kmi_layer(DFES_GOING_BUSHFIRES_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/current-hotspots")
-def current_hotspots():
-    if get_kmi_layer(ALL_CURRENT_HOTSPOTS_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/lightning-24h")
-def lightning_24h():
-    if get_kmi_layer(LIGHTNING_24H_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/lightning-24-48h")
-def lightning_24_48h():
-    if get_kmi_layer(LIGHTNING_24_48H_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/lightning-48-72h")
-def lightning_48_72h():
-    if get_kmi_layer(LIGHTNING_48_72H_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/fuel-age-1-6y")
-def fuel_age_1_6y():
-    if get_kmi_layer(FUEL_AGE_1_6Y_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/fuel-age-nonforest-1-6y")
-def fuel_age_nonforest_1_6y():
-    if get_kmi_layer(FUEL_AGE_NONFOREST_1_6Y_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/cog-basemap")
-def cog_basemap():
-    if get_kmi_layer(COG_BASEMAP_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/state-basemap")
-def state_basemap():
-    if get_kmi_layer(STATE_BASEMAP_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-burn-program")
-def dbca_burn_program():
-    if get_kmi_layer(DBCA_BURN_PROGRAM_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/daily-active-burns")
-def daily_active_burns():
-    if get_kmi_layer(DAILY_ACTIVE_BURNS_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-lands-waters")
-def dbca_land_waters():
-    if get_kmi_layer(DBCA_LANDS_WATERS_LAYER):
-        return "<button class='pure-button button-success'>OK</button>"
-    else:
-        return "<button class='pure-button button-error'>ERROR</button>"
-
-
-@app.route("/api/dbca-lands-waters-interest")
-def dbca_land_waters_interest():
-    if get_kmi_layer(DBCA_LANDS_WATERS_INTEREST_LAYER):
+@app.route("/api/kmi/<kmi_layer>")
+async def kmi_layer_responds(kmi_layer):
+    layer_map = {
+        "dbca-going-bushfires": DBCA_GOING_BUSHFIRES_LAYER,
+        "dbca-control-lines": DBCA_CONTROL_LINES_LAYER,
+        "dfes-going-bushfires": DFES_GOING_BUSHFIRES_LAYER,
+        "current-hotspots": ALL_CURRENT_HOTSPOTS_LAYER,
+        "lightning-24h": LIGHTNING_24H_LAYER,
+        "lightning-24-48h": LIGHTNING_24_48H_LAYER,
+        "lightning-48-72h": LIGHTNING_48_72H_LAYER,
+        "fuel-age-1-6y": FUEL_AGE_1_6Y_LAYER,
+        "fuel-age-nonforest-1-6y": FUEL_AGE_NONFOREST_1_6Y_LAYER,
+        "cog-basemap": COG_BASEMAP_LAYER,
+        "state-basemap": STATE_BASEMAP_LAYER,
+        "dbca-burn-program": DBCA_BURN_PROGRAM_LAYER,
+        "daily-active-burns": DAILY_ACTIVE_BURNS_LAYER,
+        "dbca-lands-waters": DBCA_LANDS_WATERS_LAYER,
+        "dbca-lands-waters-interest": DBCA_LANDS_WATERS_INTEREST_LAYER,
+    }
+    if get_kmi_layer(layer_map[kmi_layer]):
         return "<button class='pure-button button-success'>OK</button>"
     else:
         return "<button class='pure-button button-error'>ERROR</button>"
 
 
 if __name__ == "__main__":
-    from bottle import run
-
-    run(
-        application,
-        host="0.0.0.0",
-        port=os.environ.get("PORT", 8080),
-        reloader=True,
-    )
+    application.run(host="0.0.0.0", port=os.environ.get("PORT", 8080), use_reloader=True)

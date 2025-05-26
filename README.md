@@ -22,7 +22,7 @@ Activate the virtualenv like so:
 
 To run Python commands in the activated virtualenv, thereafter run them like so:
 
-    python manage.py
+    ipython
 
 Manage new or updated project dependencies with uv also, like so:
 
@@ -35,12 +35,13 @@ Most settings have default values; check `status.py` for required variables.
 
 ## Running
 
-Use `python status.py` to run a local copy of the application:
+To run a local copy of the application:
 
     python status.py
+    # Serve via HyperCorn instead of Quart:
+    hypercorn status:application --config hypercorn.toml --reload
 
-The application runs on port 8080 by default. To change this, set an environment
-variable value for `PORT`.
+The application runs on port 8080 by default. To change this, modify `hypercorn.toml`.
 
 ## Docker image
 

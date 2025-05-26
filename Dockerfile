@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Prepare the base environment.
-FROM python:3.12-slim-bookworm AS builder_base
+FROM python:3.13-slim-bookworm AS builder_base
 
 # This approximately follows this guide: https://hynek.me/articles/docker-uv/
 # Which creates a standalone environment with the dependencies.
@@ -35,9 +35,12 @@ RUN --mount=type=cache,target=/root/.cache \
 
 ##################################################################################
 
-FROM python:3.12-alpine
+FROM python:3.13-alpine
 LABEL org.opencontainers.image.authors=asi@dbca.wa.gov.au
 LABEL org.opencontainers.image.source=https://github.com/dbca-wa/healthcheck
+
+# Install system updates
+RUN apk upgrade --no-cache
 
 # Create a non-root user to run the application.
 RUN addgroup -g 1000 app \
@@ -51,9 +54,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Run Python unbuffered
 ENV PYTHONUNBUFFERED=1
 
-COPY gunicorn.py status.py ./
+COPY hypercorn.toml status.py ./
 COPY static ./static
 COPY templates ./templates
 USER app
 EXPOSE 8080
-CMD ["gunicorn", "status:application", "--config", "gunicorn.py"]
+CMD ["hypercorn", "status:application", "--config", "hypercorn.toml"]

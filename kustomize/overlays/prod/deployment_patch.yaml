@@ -119,3 +119,8 @@ spec:
                 secretKeyRef:
                   name: healthcheck-env-prod
                   key: DBCA_LANDS_WATERS_INTEREST_LAYER
+            - name: CACHE_RESPONSE
+              valueFrom:
+                secretKeyRef:
+                  name: healthcheck-env-uat
+                  key: CACHE_RESPONSE
