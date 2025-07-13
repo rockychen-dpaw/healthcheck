@@ -8,7 +8,7 @@ requires-python = ">=3.13,<4.0"
 dependencies = [
   "requests==2.32.4",
   "pytz===2025.2",
-  "python-dotenv==1.1.0",
+  "python-dotenv==1.1.1",
   "humanize==4.12.3",
   "defusedxml==0.7.1",
   "quart==0.20.0",
