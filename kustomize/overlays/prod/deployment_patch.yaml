@@ -122,5 +122,5 @@ spec:
             - name: CACHE_RESPONSE
               valueFrom:
                 secretKeyRef:
-                  name: healthcheck-env-uat
+                  name: healthcheck-env-prod
                   key: CACHE_RESPONSE

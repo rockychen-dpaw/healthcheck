@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import defusedxml.ElementTree as ET
 import humanize
 import requests
-from quart import Quart, helpers, make_response, render_template
+from quart import Quart, make_response, render_template, send_from_directory
 
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
@@ -380,12 +380,12 @@ def get_healthcheck() -> dict:
     return d
 
 
-@app.route("/readiness")
+@app.route("/readyz")
 async def readiness():
     return "OK"
 
 
-@app.route("/liveness")
+@app.route("/livez")
 async def liveness():
     return "OK"
 
@@ -585,8 +585,7 @@ async def index_legacy():
 
 @app.route("/favicon.ico")
 async def favicon():
-    """Redirect to the static asset."""
-    return helpers.redirect("/static/favicon.ico")
+    return await send_from_directory("static", "favicon.ico")
 
 
 @app.route("/")
