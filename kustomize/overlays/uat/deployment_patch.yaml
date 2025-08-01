@@ -123,3 +123,8 @@ spec:
                 secretKeyRef:
                   name: healthcheck-env-uat
                   key: CACHE_RESPONSE
+      tolerations:
+        - effect: NoSchedule
+          key: kubernetes.azure.com/scalesetpriority
+          operator: Equal
+          value: spot
