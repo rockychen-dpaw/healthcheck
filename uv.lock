@@ -216,8 +216,8 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "ipython", specifier = ">=8.32.0" },
-    { name = "pre-commit", specifier = ">=4.1.0" },
+    { name = "ipython", specifier = ">=9.4.0" },
+    { name = "pre-commit", specifier = ">=4.3.0" },
 ]
 
 [[package]]

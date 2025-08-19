@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ipython>=8.32.0", "pre-commit>=4.1.0"]
+dev = ["ipython>=9.4.0", "pre-commit>=4.3.0"]
 
 [tool.ruff]
 line-length = 140
@@ -24,6 +24,7 @@ indent-width = 4
 
 [tool.ruff.lint]
 ignore = [
+  "E265", # Block comment should begin with '#'
   "E501", # Line too long
   "E722", # Bare except
 ]
