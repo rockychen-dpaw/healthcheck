@@ -23,15 +23,14 @@ COPY pyproject.toml uv.lock /_lock/
 
 # Install OS requirements to build packages.
 RUN apt-get update -y \
-  && apt-get install -y gcc
+  && apt-get install -y gcc \
+  && rm -rf /var/lib/apt/lists/*
 
 # Synchronize dependencies.
 # This layer is cached until uv.lock or pyproject.toml change.
 RUN --mount=type=cache,target=/root/.cache \
   cd /_lock && \
-  uv sync \
-  --frozen \
-  --no-group dev
+  uv sync --frozen --no-group dev
 
 ##################################################################################
 
@@ -50,9 +49,9 @@ RUN addgroup -g 1000 app \
 WORKDIR /app
 COPY --from=builder_base --chown=app:app /app /app
 # Make sure we use the virtualenv by default
-ENV PATH="/app/.venv/bin:$PATH"
 # Run Python unbuffered
-ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/.venv/bin:$PATH" \
+  PYTHONUNBUFFERED=1
 
 COPY hypercorn.toml status.py ./
 COPY static ./static
