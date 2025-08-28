@@ -2,19 +2,23 @@ import logging
 import os
 import sys
 from datetime import datetime
+from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
 import defusedxml.ElementTree as ET
+import httpx
 import humanize
-import requests
-from quart import Quart, make_response, render_template, send_from_directory
+from quart import Quart, jsonify, make_response, render_template
 
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
     from dotenv import load_dotenv
 
     load_dotenv()
-app = application = Quart(__name__, template_folder="templates")
+TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))
+DEBUG = os.getenv("DEBUG", False)
+app = application = Quart(__name__, template_folder="templates", static_folder="static")
+app.config.from_mapping(DEBUG=DEBUG, TZ=TZ)
 
 
 # Configure logging.
@@ -27,23 +31,16 @@ handler.setFormatter(formatter)
 LOGGER.addHandler(handler)
 
 # Set Cache-Control headers or not.
-CACHE_RESPONSE = os.getenv("CACHE_RESPONSE")
-if CACHE_RESPONSE:
-    CACHE_RESPONSE = CACHE_RESPONSE == "True"
+CACHE_RESPONSE = os.getenv("CACHE_RESPONSE", True)
 
-TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))
-OUTPUT_TEMPLATE_LEGACY = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>DBCA Spatial Support System health checks</title>
-<meta name="description" content="DBCA Spatial Support System health checks">
-</head>
-<body>
-<h1>DBCA Spatial Support System health checks</h1>
-{}
-</body>
-</html>"""
+
+# Credentials for authenticated endpoints (required).
+USER_SSO = os.getenv("USER_SSO")
+PASS_SSO = os.getenv("PASS_SSO")
+if not USER_SSO or not PASS_SSO:
+    raise ValueError("Missing USER_SSO or PASS_SSO environment variables")
+
+# Response endpoint URLS.
 RT_URL = os.environ.get("RT_URL", "https://resourcetracking.dbca.wa.gov.au")
 TRACKING_POINTS_MAX_DELAY = int(os.environ.get("TRACKING_POINTS_MAX_DELAY", 30))  # Minutes
 RT_DEVICES_URL = RT_URL + "/api/v1/device/?seen__isnull=false&format=json"
@@ -57,17 +54,14 @@ RT_FLEETCARE_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_ty
 RT_FLEETCARE_METRICS_URL = RT_URL + "/api/devices/metrics/fleetcare/"
 RT_NETSTAR_URL = RT_URL + "/api/v1/device/?seen__isnull=false&source_device_type=netstar&format=json"
 RT_NETSTAR_METRICS_URL = RT_URL + "/api/devices/metrics/netstar/"
-
 CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/records/?format=json&application__name=sss")
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
 KMI_WFS_URL = f"{KMI_URL}/ows"
 KMI_WMTS_URL = f"{KMI_URL}/gwc/service/wmts"
 BFRS_URL = os.environ.get("BFRS_URL", "https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json")
-AUTH2_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/healthcheck")
-AUTH2_STATUS_URL = os.environ.get("AUTH2_URL", "https://auth2.dbca.wa.gov.au/status")
+AUTH2_STATUS_URL = os.environ.get("AUTH2_STATUS_URL", "https://auth2.dbca.wa.gov.au/status")
 
-USER_SSO = os.environ.get("USER_SSO", "asi@dbca.wa.gov.au")
-PASS_SSO = os.environ.get("PASS_SSO", "password")
+# Spatial data layer names.
 DBCA_GOING_BUSHFIRES_LAYER = os.environ.get("DBCA_GOING_BUSHFIRES_LAYER", None)
 DBCA_CONTROL_LINES_LAYER = os.environ.get("DBCA_CONTROL_LINES_LAYER", None)
 DFES_GOING_BUSHFIRES_LAYER = os.environ.get("DFES_GOING_BUSHFIRES_LAYER", None)
@@ -85,215 +79,186 @@ DBCA_LANDS_WATERS_LAYER = os.environ.get("DBCA_LANDS_WATERS_LAYER", None)
 DBCA_LANDS_WATERS_INTEREST_LAYER = os.environ.get("DBCA_LANDS_WATERS_INTEREST_LAYER", None)
 
 
-def get_session() -> requests.Session:
-    """Return a requests Session object having auth set."""
-    session = requests.Session()
-    session.auth = (USER_SSO, PASS_SSO)
-    return session
+async def get_session(timeout: float = 10.0) -> httpx.AsyncClient:
+    return httpx.AsyncClient(auth=(USER_SSO, PASS_SSO), timeout=timeout)
 
 
-def get_healthcheck() -> dict:
+async def fetch_data(session, url, error_list, source_desc) -> Optional[Dict[str, Any]]:
+    """Convenience function to query an authenticated endpoint, parse and return JSON."""
+    try:
+        resp = await session.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+        return data
+    except:
+        LOGGER.exception(f"Error while querying {source_desc}: {url}")
+        error_list.append(f"Error while querying {source_desc}: {url}")
+        return None
+
+
+async def get_healthcheck() -> Dict[str, Any]:
     """Query HTTP sources and return a dictionary of response successes."""
-    session = get_session()
+    session = await get_session()
     d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
 
-    try:
-        trackingdata = session.get(RT_DEVICES_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+    # All tracking device types delay.
+    source_desc = "All Resource Tracking devices"
+    data = await fetch_data(session, RT_DEVICES_URL, d["errors"], source_desc)
+    if data:
+        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
         d["latest_point"] = t.isoformat()
-        d["latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        d["latest_point_age_min"] = data["objects"][0]["age_minutes"]
+        # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
+        if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_DEVICES_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_DEVICES_URL}")
+            d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
+    else:
+        # No return data from this endpoint triggers failure.
         d["latest_point"] = None
-        d["latest_point_delay"] = None
+        d["latest_point_age_min"] = None
         d["success"] = False
 
-    try:
-        trackingdata = session.get(RT_IRIDIUM_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+    # Iridium device delay.
+    source_desc = "Iridium devices"
+    data = await fetch_data(session, RT_IRIDIUM_URL, d["errors"], source_desc)
+    if data:
+        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
         d["iridium_latest_point"] = t.isoformat()
-        d["iridium_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        d["iridium_latest_point_age_min"] = data["objects"][0]["age_minutes"]
+        # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
+        if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_IRIDIUM_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_IRIDIUM_URL}")
+            d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
+    else:
         d["iridium_latest_point"] = None
-        d["iridium_latest_point_delay"] = None
-        d["success"] = False
+        d["iridium_latest_point_age_min"] = None
 
-    try:
-        resp = session.get(RT_IRIDIUM_METRICS_URL)
-        resp.raise_for_status()
-        data = resp.json()
+    # Iridium device metrics.
+    source_desc = "Iridium device metrics"
+    data = await fetch_data(session, RT_IRIDIUM_METRICS_URL, d["errors"], source_desc)
+    if data:
         d["iridium_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_IRIDIUM_METRICS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_IRIDIUM_METRICS_URL}")
+    else:
         d["iridium_loggedpoint_rate_min"] = None
-        d["success"] = False
 
-    try:
-        trackingdata = session.get(RT_TRACPLUS_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+    # TracPlus device delay (no max age).
+    source_desc = "TracPlus devices"
+    data = await fetch_data(session, RT_TRACPLUS_URL, d["errors"], source_desc)
+    if data:
+        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
         d["tracplus_latest_point"] = t.isoformat()
-        d["tracplus_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_TRACPLUS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_TRACPLUS_URL}")
+        d["tracplus_latest_point_delay"] = data["objects"][0]["age_minutes"]
+    else:
         d["tracplus_latest_point"] = None
         d["tracplus_latest_point_delay"] = None
-        d["success"] = False
 
-    try:
-        resp = session.get(RT_TRACPLUS_METRICS_URL)
-        resp.raise_for_status()
-        data = resp.json()
+    # TracPlus device metrics.
+    source_desc = "TracPlus device metrics"
+    data = await fetch_data(session, RT_TRACPLUS_METRICS_URL, d["errors"], source_desc)
+    if data:
         d["tracplus_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_TRACPLUS_METRICS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_TRACPLUS_METRICS_URL}")
+    else:
         d["tracplus_loggedpoint_rate_min"] = None
-        d["success"] = False
 
-    try:
-        trackingdata = session.get(RT_DFES_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+    # DFES device delay (no max age).
+    source_desc = "DFES devices"
+    data = await fetch_data(session, RT_DFES_URL, d["errors"], source_desc)
+    if data:
+        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
         d["dfes_latest_point"] = t.isoformat()
-        d["dfes_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_DFES_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_DFES_URL}")
+        d["dfes_latest_point_delay"] = data["objects"][0]["age_minutes"]
+    else:
         d["dfes_latest_point"] = None
         d["dfes_latest_point_delay"] = None
-        d["success"] = False
 
-    try:
-        resp = session.get(RT_DFES_METRICS_URL)
-        resp.raise_for_status()
-        data = resp.json()
+    # DFES device metrics.
+    source_desc = "DFES device metrics"
+    data = await fetch_data(session, RT_DFES_METRICS_URL, d["errors"], source_desc)
+    if data:
         d["dfes_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_DFES_METRICS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_DFES_METRICS_URL}")
+    else:
         d["dfes_loggedpoint_rate_min"] = None
-        d["success"] = False
 
-    try:
-        trackingdata = session.get(RT_FLEETCARE_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+    # Fleetcare device delay.
+    source_desc = "Fleetcare devices"
+    data = await fetch_data(session, RT_FLEETCARE_URL, d["errors"], source_desc)
+    if data:
+        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
         d["fleetcare_latest_point"] = t.isoformat()
-        d["fleetcare_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        d["fleetcare_latest_point_delay"] = data["objects"][0]["age_minutes"]
+        # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
+        if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
             d["success"] = False
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
+            d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
+    else:
         d["fleetcare_latest_point"] = None
         d["fleetcare_latest_point_delay"] = None
-        d["success"] = False
 
-    try:
-        resp = session.get(RT_FLEETCARE_METRICS_URL)
-        resp.raise_for_status()
-        data = resp.json()
+    # Fleetcare device metrics.
+    source_desc = "Fleetcare device metrics"
+    data = await fetch_data(session, RT_FLEETCARE_METRICS_URL, d["errors"], source_desc)
+    if data:
         d["fleetcare_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_METRICS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_METRICS_URL}")
+    else:
         d["fleetcare_loggedpoint_rate_min"] = None
-        d["success"] = False
 
-    try:
-        trackingdata = session.get(RT_NETSTAR_URL)
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        t = datetime.fromisoformat(trackingdata["objects"][0]["seen"]).astimezone(TZ)
+    # Netstar device delay (no max age).
+    source_desc = "Netstar devices"
+    data = await fetch_data(session, RT_NETSTAR_URL, d["errors"], source_desc)
+    if data:
+        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
         d["netstar_latest_point"] = t.isoformat()
-        d["netstar_latest_point_delay"] = trackingdata["objects"][0]["age_minutes"]
-        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            d["success"] = False
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_FLEETCARE_URL}")
+        d["netstar_latest_point_delay"] = data["objects"][0]["age_minutes"]
+    else:
         d["netstar_latest_point"] = None
         d["netstar_latest_point_delay"] = None
-        d["success"] = False
 
-    try:
-        resp = session.get(RT_NETSTAR_METRICS_URL)
-        resp.raise_for_status()
-        data = resp.json()
+    # Netstar device metrics.
+    source_desc = "Netstar device metrics"
+    data = await fetch_data(session, RT_NETSTAR_METRICS_URL, d["errors"], source_desc)
+    if data:
         d["netstar_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    except Exception as e:
-        LOGGER.warning(f"Error querying Resource Tracking: {RT_NETSTAR_METRICS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Resource Tracking: {RT_NETSTAR_METRICS_URL}")
+    else:
         d["netstar_loggedpoint_rate_min"] = None
-        d["success"] = False
 
-    try:
-        resp = session.get(CSW_API)
-        resp.raise_for_status()
-        j = resp.json()
-        d["csw_catalogue_count"] = len(j)
-    except Exception as e:
-        LOGGER.warning(f"Error querying CSW API: {CSW_API}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying CSW API: {CSW_API}")
+    # CSW API response.
+    source_desc = "CSW API endpoint"
+    data = await fetch_data(session, CSW_API, d["errors"], source_desc)
+    if data:
+        d["csw_catalogue_count"] = len(data)
+    else:
+        # No response from this endpoint triggers failure.
         d["csw_catalogue_count"] = None
         d["success"] = False
 
+    # KMI WFS: Today's Burns layer (anonymous request).
     try:
-        # Public service, so we need to send an anonymous request.
         params = {
-            "service": "wfs",
-            "version": "1.1.0",
+            "service": "WFS",
+            "version": "1.0.0",
             "request": "GetFeature",
-            "typeNames": "public:todays_burns",
-            "resultType": "hits",
+            "typeName": "public:todays_burns",
+            "maxFeatures": 1,
+            "outputFormat": "application/json",
         }
-        resp = requests.get(KMI_WFS_URL, params=params)
+        resp = httpx.get(KMI_WFS_URL, params=params)
         resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        resp_d = {i[0]: i[1] for i in root.items()}
-        d["todays_burns_count"] = int(resp_d["numberOfFeatures"])
-    except Exception as e:
-        LOGGER.warning("Error querying KMI WFS (public:todays_burns)")
-        LOGGER.warning(e)
+        data = resp.json()
+        d["todays_burns_count"] = data["totalFeatures"]
+    except:
+        LOGGER.exception("Error querying KMI WFS (public:todays_burns)")
         d["errors"].append("Error querying KMI WFS (public:todays_burns)")
         d["todays_burns_count"] = None
         d["success"] = False
 
+    # KMI WMTS GetCapabilities endpoint.
     try:
-        resp = session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
+        resp = await session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
         if not resp.status_code == 200:
             resp.raise_for_status()
         root = ET.fromstring(resp.content)
         ns = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
+        # Parse the XML response.
         layers = root.findall(".//wmts:Layer", ns)
         d["kmi_wmts_layer_count"] = len(layers)
     except Exception as e:
@@ -303,15 +268,13 @@ def get_healthcheck() -> dict:
         d["kmi_wmts_layer_count"] = None
         d["success"] = False
 
-    try:
-        resp = session.get(BFRS_URL)
-        resp.raise_for_status()
-        j = resp.json()
+    # BFRS API response.
+    source_desc = "BFRS API endpoint"
+    data = await fetch_data(session, BFRS_URL, d["errors"], source_desc)
+    if data:
         d["bfrs_profile_api_endpoint"] = True
-    except Exception as e:
-        LOGGER.warning(f"Error querying BFRS API endpoint: {BFRS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying BFRS API endpoint: {BFRS_URL}")
+    else:
+        # No response from this endpoint triggers failure.
         d["bfrs_profile_api_endpoint"] = None
         d["success"] = False
 
@@ -320,6 +283,7 @@ def get_healthcheck() -> dict:
         "service": "WMS",
         "version": "1.1.0",
         "request": "GetMap",
+        # Bounding box covers WA:
         "bbox": "109.3,-40.4,132.6,-6.7",
         "width": "552",
         "height": "768",
@@ -352,28 +316,27 @@ def get_healthcheck() -> dict:
             try:
                 url = f"{KMI_URL}/{path}"
                 if prefix == "public":
-                    resp = requests.get(url, params=kmi_params)
+                    resp = httpx.get(url, params=kmi_params)
                 else:
-                    resp = session.get(url, params=kmi_params)
+                    resp = await session.get(url, params=kmi_params)
                 resp.raise_for_status()
                 if "ServiceExceptionReport" in str(resp.content):
                     d[kmi_layer] = False
                     d["success"] = False
+                    d["errors"].append(f"Error querying KMI layer {kmi_layer}")
                 else:
                     d[kmi_layer] = True
             except Exception:
                 d[kmi_layer] = False
                 d["success"] = False
 
-    try:
-        resp = session.get(AUTH2_STATUS_URL)
-        resp.raise_for_status()
-        j = resp.json()
-        d["auth2_status"] = j["healthy"]
-    except Exception as e:
-        LOGGER.warning(f"Error querying Auth2 status API endpoint: {AUTH2_STATUS_URL}")
-        LOGGER.warning(e)
-        d["errors"].append(f"Error querying Auth2 status API endpoint: {AUTH2_STATUS_URL}")
+    # Auth2 status response.
+    source_desc = "Auth2 status API endpoint"
+    data = await fetch_data(session, AUTH2_STATUS_URL, d["errors"], source_desc)
+    if data:
+        d["auth2_status"] = data["healthy"]
+    else:
+        # No response from this endpoint triggers failure.
         d["auth2_status"] = None
         d["success"] = False
 
@@ -393,188 +356,201 @@ async def liveness():
 @app.route("/json")
 async def healthcheck_json():
     try:
-        d = get_healthcheck()
-        response = await make_response(d)
+        data = await get_healthcheck()
+        response = jsonify(data)
         if CACHE_RESPONSE:
             # Mark response as "cache for 60 seconds".
             response.headers["Cache-Control"] = "max-age=60"
         return response
-    except Exception as e:
-        LOGGER.warning("Error serialising healthcheck response as JSON")
-        LOGGER.warning(e)
-        return {
-            "server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"),
-            "success": False,
-        }
+    except:
+        LOGGER.exception("Error serialising healthcheck response as JSON")
+        return jsonify(
+            {
+                "server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"),
+                "success": False,
+            }
+        )
 
 
 # Retain legacy health check route for PRTG.
 @app.route("/legacy")
 async def index_legacy():
-    d = get_healthcheck()
-    output = f"<p>Server time: {d['server_time']}</p>\n"
+    data = await get_healthcheck()
+    output = f"<p>Server time: {data['server_time']}</p>\n"
     output += "<p>\n"
 
-    output += f"Latest tracking point: {d['latest_point']}<br>\n"
-    if d["latest_point_delay"] > TRACKING_POINTS_MAX_DELAY:
+    output += f"Latest tracking point: {data['latest_point']}<br>\n"
+    if data["latest_point_age_min"] > TRACKING_POINTS_MAX_DELAY:
         output += "Resource Tracking Delay too high! Currently {0:.1f} min (max {1} min)<br>\n".format(
-            d["latest_point_delay"],
+            data["latest_point_age_min"],
             TRACKING_POINTS_MAX_DELAY,
         )
     else:
         output += "Resource Tracking delay currently {0:.1f} min (max {1} min)<br>\n".format(
-            d["latest_point_delay"],
+            data["latest_point_age_min"],
             TRACKING_POINTS_MAX_DELAY,
         )
 
-    output += f"Latest Iridium tracking point: {d['iridium_latest_point']}<br>\n"
-    if d["iridium_latest_point_delay"] > TRACKING_POINTS_MAX_DELAY:
+    output += f"Latest Iridium tracking point: {data['iridium_latest_point']}<br>\n"
+    if data["iridium_latest_point_age_min"] > TRACKING_POINTS_MAX_DELAY:
         output += "Iridium tracking delay too high! Currently {0:.1f} min (max {1} min)<br>\n".format(
-            d["iridium_latest_point_delay"],
+            data["iridium_latest_point_age_min"],
             TRACKING_POINTS_MAX_DELAY,
         )
     else:
         output += "Iridium tracking delay currently {0:.1f} min (max {1} min)<br>\n".format(
-            d["iridium_latest_point_delay"],
+            data["iridium_latest_point_age_min"],
             TRACKING_POINTS_MAX_DELAY,
         )
 
-    output += f"Latest Tracplus tracking point: {d['tracplus_latest_point']}<br>\n"
+    output += f"Latest Tracplus tracking point: {data['tracplus_latest_point']}<br>\n"
     output += "Tracplus tracking delay currently {0:.1f} min<br>\n".format(
-        d["tracplus_latest_point_delay"],
+        data["tracplus_latest_point_delay"],
     )
 
-    output += f"Latest DFES tracking point: {d['dfes_latest_point']}<br>\n"
+    output += f"Latest DFES tracking point: {data['dfes_latest_point']}<br>\n"
     output += "DFES tracking delay currently {0:.1f} min<br>\n".format(
-        d["dfes_latest_point_delay"],
+        data["dfes_latest_point_delay"],
     )
 
-    output += f"Latest Fleetcare tracking point: {d['fleetcare_latest_point']}<br>\n"
-    if d["fleetcare_latest_point_delay"] > TRACKING_POINTS_MAX_DELAY:
+    output += f"Latest Fleetcare tracking point: {data['fleetcare_latest_point']}<br>\n"
+    if data["fleetcare_latest_point_delay"] > TRACKING_POINTS_MAX_DELAY:
         output += "Fleetcare tracking delay too high! Currently {0:.1f} min (max {1} min)<br>\n".format(
-            d["fleetcare_latest_point_delay"],
+            data["fleetcare_latest_point_delay"],
             TRACKING_POINTS_MAX_DELAY,
         )
     else:
         output += "Fleetcare tracking delay currently {0:.1f} min (max {1} min)<br>\n".format(
-            d["fleetcare_latest_point_delay"],
+            data["fleetcare_latest_point_delay"],
             TRACKING_POINTS_MAX_DELAY,
         )
 
     output += "</p>\n<p>\n"
 
-    if "csw_catalogue_count" in d and d["csw_catalogue_count"]:  # Should be >0
-        output += f"CSW spatial catalogue for SSS: {d['csw_catalogue_count']} layers<br>\n"
+    if "csw_catalogue_count" in data and data["csw_catalogue_count"]:  # Should be >0
+        output += f"CSW spatial catalogue for SSS: {data['csw_catalogue_count']} layers<br>\n"
     else:
         output += "CSW API endpoint: error<br>\n"
 
-    if "todays_burns_count" in d:  # Burns count might be 0
-        output += f"Today's burns count (KMI): {d['todays_burns_count']}<br>\n"
+    if "todays_burns_count" in data:  # Burns count might be 0
+        output += f"Today's burns count (KMI): {data['todays_burns_count']}<br>\n"
     else:
         output += "Today's burns count (KMI): error<br>\n"
 
-    if d["kmi_wmts_layer_count"] and d["kmi_wmts_layer_count"]:  # Should be >0
-        output += f"KMI WMTS layer count: {d['kmi_wmts_layer_count']}<br>\n"
+    if data["kmi_wmts_layer_count"] and data["kmi_wmts_layer_count"]:  # Should be >0
+        output += f"KMI WMTS layer count: {data['kmi_wmts_layer_count']}<br>\n"
     else:
         output += "KMI WMTS GetCapabilities: error<br>\n"
 
-    if d["bfrs_profile_api_endpoint"]:
+    if data["bfrs_profile_api_endpoint"]:
         output += "BFRS profile API endpoint: OK<br>\n"
     else:
         output += "BFRS profile API endpoint: error<br>\n"
 
     output += "</p>\n<p>\n"
 
-    if d[DBCA_GOING_BUSHFIRES_LAYER]:
+    if data[DBCA_GOING_BUSHFIRES_LAYER]:
         output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): OK<br>\n"
     else:
         output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): error<br>\n"
 
-    if d[DBCA_CONTROL_LINES_LAYER]:
+    if data[DBCA_CONTROL_LINES_LAYER]:
         output += f"DBCA Control Lines layer ({DBCA_CONTROL_LINES_LAYER}): OK<br>\n"
     else:
         output += f"DBCA Control Lines ({DBCA_CONTROL_LINES_LAYER}): error<br>\n"
 
-    if d[DFES_GOING_BUSHFIRES_LAYER]:
+    if data[DFES_GOING_BUSHFIRES_LAYER]:
         output += f"DFES Going Bushfires layer ({DFES_GOING_BUSHFIRES_LAYER}): OK<br>\n"
     else:
         output += "DFES Going Bushfires layer (DFES_GOING_BUSHFIRES_LAYER): error<br>\n"
 
-    if d[ALL_CURRENT_HOTSPOTS_LAYER]:
+    if data[ALL_CURRENT_HOTSPOTS_LAYER]:
         output += f"All current hotspots layer ({ALL_CURRENT_HOTSPOTS_LAYER}): OK<br>\n"
     else:
         output += f"All current hotspots layer ({ALL_CURRENT_HOTSPOTS_LAYER}): error<br>\n"
 
-    if d[LIGHTNING_24H_LAYER]:
+    if data[LIGHTNING_24H_LAYER]:
         output += f"Lightning 24h layer ({LIGHTNING_24H_LAYER}): OK<br>\n"
     else:
         output += f"Lightning 24h layer ({LIGHTNING_24H_LAYER}): error<br>\n"
 
-    if d[LIGHTNING_24_48H_LAYER]:
+    if data[LIGHTNING_24_48H_LAYER]:
         output += f"Lightning 24-48h layer ({LIGHTNING_24_48H_LAYER}): OK<br>\n"
     else:
         output += f"Lightning 24-48h layer ({LIGHTNING_24_48H_LAYER}): error<br>\n"
 
-    if d[LIGHTNING_48_72H_LAYER]:
+    if data[LIGHTNING_48_72H_LAYER]:
         output += f"Lightning 48-72h layer ({LIGHTNING_48_72H_LAYER}): OK<br>\n"
     else:
         output += f"Lightning 48-72h layer ({LIGHTNING_48_72H_LAYER}): error<br>\n"
 
-    if d[FUEL_AGE_1_6Y_LAYER]:
+    if data[FUEL_AGE_1_6Y_LAYER]:
         output += f"Fuel age 1-6+ years layer ({FUEL_AGE_1_6Y_LAYER}): OK<br>\n"
     else:
         output += f"Fuel age 1-6+ years layer ({FUEL_AGE_1_6Y_LAYER}): error<br>\n"
 
-    if d[FUEL_AGE_NONFOREST_1_6Y_LAYER]:
+    if data[FUEL_AGE_NONFOREST_1_6Y_LAYER]:
         output += f"Fuel age non forest 1-6+ years layer ({FUEL_AGE_NONFOREST_1_6Y_LAYER}): OK<br>\n"
     else:
         output += f"Fuel age non forest 1-6+ years layer ({FUEL_AGE_NONFOREST_1_6Y_LAYER}): error<br>\n"
 
-    if d[COG_BASEMAP_LAYER]:
+    if data[COG_BASEMAP_LAYER]:
         output += f"COG basemap layer ({COG_BASEMAP_LAYER}): OK<br>\n"
     else:
         output += f"COG basemap layer ({COG_BASEMAP_LAYER}): error<br>\n"
 
-    if d[STATE_BASEMAP_LAYER]:
+    if data[STATE_BASEMAP_LAYER]:
         output += f"State basemap layer ({STATE_BASEMAP_LAYER}): OK<br>\n"
     else:
         output += f"State basemap layer ({STATE_BASEMAP_LAYER}): error<br>\n"
 
-    if d[DBCA_BURN_PROGRAM_LAYER]:
+    if data[DBCA_BURN_PROGRAM_LAYER]:
         output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): OK<br>\n"
     else:
         output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): error<br>\n"
 
-    if d[DAILY_ACTIVE_BURNS_LAYER]:
+    if data[DAILY_ACTIVE_BURNS_LAYER]:
         output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): OK<br>\n"
     else:
         output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): error<br>\n"
 
-    if d[DBCA_LANDS_WATERS_LAYER]:
+    if data[DBCA_LANDS_WATERS_LAYER]:
         output += f"DBCA legislated lands and waters layer ({DBCA_LANDS_WATERS_LAYER}): OK<br>\n"
     else:
         output += f"DBCA legislated lands and waters layer ({DBCA_LANDS_WATERS_LAYER}): error<br>\n"
 
-    if d[DBCA_LANDS_WATERS_INTEREST_LAYER]:
+    if data[DBCA_LANDS_WATERS_INTEREST_LAYER]:
         output += f"DBCA lands and waters of interest layer ({DBCA_LANDS_WATERS_INTEREST_LAYER}): OK<br>\n"
     else:
         output += f"DBCA lands and waters of interest layer ({DBCA_LANDS_WATERS_INTEREST_LAYER}): error<br>\n"
 
     output += "</p>\n<p>\n"
 
-    if d["auth2_status"]:
+    if data["auth2_status"]:
         output += "AUTH2 status: OK<br>\n"
     else:
         output += "AUTH2 status: error<br>\n"
 
     output += "</p>\n<p>\n"
-    if d["success"]:
+    if data["success"]:
         output += "<strong>Finished checks, healthcheck succeeded!</strong>"
     else:
         output += "<strong>Finished checks, something is wrong =(</strong>"
     output += "</p>"
 
-    response = await make_response(OUTPUT_TEMPLATE_LEGACY.format(output))
+    output_html = f"""<!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <title>DBCA Spatial Support System health checks</title>
+    <meta name="description" content="DBCA Spatial Support System health checks">
+    </head>
+    <body>
+    <h1>DBCA Spatial Support System health checks</h1>
+    {output}
+    </body>
+    </html>"""
+    response = await make_response(output_html)
 
     if CACHE_RESPONSE:
         # Mark response as "cache for 60 seconds".
@@ -583,19 +559,18 @@ async def index_legacy():
     return response
 
 
-@app.route("/favicon.ico")
-async def favicon():
-    return await send_from_directory("static", "favicon.ico")
-
-
 @app.route("/")
 async def index():
+    """The root view returns a static page which queries API endpoints asynchronously and renders the result."""
     return await render_template("index.html")
+
+
+ERROR_BUTTON_HTML = "<button class='pure-button button-error'>ERROR</button>"
 
 
 @app.route("/api/<source>/latest")
 async def source_latest(source):
-    session = get_session()
+    session = await get_session()
 
     endpoint_map = {
         "all-sources": RT_DEVICES_URL,
@@ -607,18 +582,18 @@ async def source_latest(source):
     }
 
     try:
-        resp = session.get(endpoint_map[source])
+        resp = await session.get(endpoint_map[source])
         resp.raise_for_status()
         data = resp.json()
         seen = humanize.naturaltime(datetime.fromisoformat(data["objects"][0]["seen"]))
         return f"<button class='pure-button button-success'>{seen}</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/<source>/loggedpoint-rate")
 async def source_loggedpoint_rate(source):
-    session = get_session()
+    session = await get_session()
 
     endpoint_map = {
         "iridium": RT_IRIDIUM_METRICS_URL,
@@ -629,7 +604,7 @@ async def source_loggedpoint_rate(source):
     }
 
     try:
-        resp = session.get(endpoint_map[source])
+        resp = await session.get(endpoint_map[source])
         resp.raise_for_status()
         data = resp.json()
         loggedpoint_rate = int(data["logged_point_count"] / data["minutes"])
@@ -637,12 +612,12 @@ async def source_loggedpoint_rate(source):
             loggedpoint_rate = "<1"
         return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/<source>/delay")
 async def source_delay(source):
-    session = get_session()
+    session = await get_session()
 
     endpoint_map = {
         "all-sources": RT_DEVICES_URL,
@@ -651,7 +626,7 @@ async def source_delay(source):
     }
 
     try:
-        trackingdata = session.get(endpoint_map[source])
+        trackingdata = await session.get(endpoint_map[source])
         trackingdata.raise_for_status()
         trackingdata = trackingdata.json()
         if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
@@ -659,15 +634,15 @@ async def source_delay(source):
         else:
             return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} min</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/kmi-wmts-layers")
 async def kmi_wmts_layers():
-    session = get_session()
+    session = await get_session()
 
     try:
-        resp = session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
+        resp = await session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
         if not resp.status_code == 200:
             resp.raise_for_status()
         root = ET.fromstring(resp.content)
@@ -676,45 +651,45 @@ async def kmi_wmts_layers():
         layer_count = len(layers)
         return f"<button class='pure-button button-success'>{layer_count} layers</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/csw-layers")
 async def csw_layers():
-    session = get_session()
+    session = await get_session()
 
     try:
-        resp = session.get(CSW_API)
+        resp = await session.get(CSW_API)
         resp.raise_for_status()
         j = resp.json()
         catalogue = len(j)
         return f"<button class='pure-button button-success'>{catalogue} layers</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/bfrs-status")
 async def bfrs_status():
-    session = get_session()
+    session = await get_session()
 
     try:
-        resp = session.get(BFRS_URL)
+        resp = await session.get(BFRS_URL)
         resp.raise_for_status()
         return "<button class='pure-button button-success'>OK</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/auth2-status")
 async def auth2_status():
-    session = get_session()
+    session = await get_session()
 
     try:
-        resp = session.get(AUTH2_STATUS_URL)
+        resp = await session.get(AUTH2_STATUS_URL)
         resp.raise_for_status()
         return "<button class='pure-button button-success'>OK</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/todays-burns")
@@ -729,17 +704,17 @@ async def todays_burns():
 
     # Public service, so we need to send an anonymous request.
     try:
-        resp = requests.get(KMI_WFS_URL, params=params)
+        resp = httpx.get(KMI_WFS_URL, params=params)
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
         resp_d = {i[0]: i[1] for i in root.items()}
         todays_burns = int(resp_d["numberOfFeatures"])
         return f"<button class='pure-button button-success'>{todays_burns}</button>"
     except:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
-def get_kmi_layer(kmi_layer) -> bool:
+async def get_kmi_layer(kmi_layer) -> bool:
     """Query KMI WMTS and return boolean if the service responds or not."""
     params = {
         "service": "WMTS",
@@ -758,10 +733,10 @@ def get_kmi_layer(kmi_layer) -> bool:
 
     try:
         if prefix == "public":
-            resp = requests.get(KMI_WMTS_URL, params=params)
+            resp = httpx.get(KMI_WMTS_URL, params=params)
         else:
-            session = get_session()
-            resp = session.get(KMI_WMTS_URL, params=params)
+            session = await get_session()
+            resp = await session.get(KMI_WMTS_URL, params=params)
         resp.raise_for_status()
         if "ServiceExceptionReport" in str(resp.content):
             return False
@@ -789,10 +764,11 @@ async def kmi_layer_responds(kmi_layer):
         "dbca-lands-waters": DBCA_LANDS_WATERS_LAYER,
         "dbca-lands-waters-interest": DBCA_LANDS_WATERS_INTEREST_LAYER,
     }
-    if get_kmi_layer(layer_map[kmi_layer]):
+    kmi_resp = await get_kmi_layer(layer_map[kmi_layer])
+    if kmi_resp:
         return "<button class='pure-button button-success'>OK</button>"
     else:
-        return "<button class='pure-button button-error'>ERROR</button>"
+        return ERROR_BUTTON_HTML
 
 
 if __name__ == "__main__":
