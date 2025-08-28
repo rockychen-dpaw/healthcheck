@@ -569,7 +569,7 @@ ERROR_BUTTON_HTML = "<button class='pure-button button-error'>ERROR</button>"
 
 
 @app.route("/api/<source>/latest")
-async def source_latest(source):
+async def api_source_latest(source):
     session = await get_session()
 
     endpoint_map = {
@@ -592,7 +592,7 @@ async def source_latest(source):
 
 
 @app.route("/api/<source>/loggedpoint-rate")
-async def source_loggedpoint_rate(source):
+async def api_source_loggedpoint_rate(source):
     session = await get_session()
 
     endpoint_map = {
@@ -616,7 +616,7 @@ async def source_loggedpoint_rate(source):
 
 
 @app.route("/api/<source>/delay")
-async def source_delay(source):
+async def api_source_delay(source):
     session = await get_session()
 
     endpoint_map = {
@@ -638,7 +638,7 @@ async def source_delay(source):
 
 
 @app.route("/api/kmi-wmts-layers")
-async def kmi_wmts_layers():
+async def api_kmi_wmts_layers():
     session = await get_session()
 
     try:
@@ -655,7 +655,7 @@ async def kmi_wmts_layers():
 
 
 @app.route("/api/csw-layers")
-async def csw_layers():
+async def api_csw_layers():
     session = await get_session()
 
     try:
@@ -669,7 +669,7 @@ async def csw_layers():
 
 
 @app.route("/api/bfrs-status")
-async def bfrs_status():
+async def api_bfrs_status():
     session = await get_session()
 
     try:
@@ -681,7 +681,7 @@ async def bfrs_status():
 
 
 @app.route("/api/auth2-status")
-async def auth2_status():
+async def api_auth2_status():
     session = await get_session()
 
     try:
@@ -693,7 +693,7 @@ async def auth2_status():
 
 
 @app.route("/api/todays-burns")
-async def todays_burns():
+async def api_todays_burns():
     params = {
         "service": "wfs",
         "version": "1.1.0",
@@ -746,7 +746,7 @@ async def get_kmi_layer(kmi_layer) -> bool:
 
 
 @app.route("/api/kmi/<kmi_layer>")
-async def kmi_layer_responds(kmi_layer):
+async def api_kmi_layer_responds(kmi_layer):
     layer_map = {
         "dbca-going-bushfires": DBCA_GOING_BUSHFIRES_LAYER,
         "dbca-control-lines": DBCA_CONTROL_LINES_LAYER,
