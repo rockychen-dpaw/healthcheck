@@ -36,6 +36,12 @@ To run a local copy of the application:
 
 The application runs on port 8080 by default. To change this, modify `hypercorn.toml`.
 
+## Testing
+
+Run unit tests using `pytest`:
+
+    pytest -s --pdb
+
 ## Docker image
 
 To build a new Docker image from the `Dockerfile`:
