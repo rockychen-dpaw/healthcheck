@@ -1,0 +1,124 @@
+<script type="text/javascript">
+healthstatus={}
+{% for section in healthcheck.sectionlist %}
+healthstatus['{{section.sectionid}}'] = {}
+    {% for service in section.servicelist %}
+healthstatus['{{section.sectionid}}']['{{service.serviceid}}'] = {"nextcheck": "{{service.healthstatus_nextcheck}}","message":`Health Status : {{service.healthstatus_name}}
+Check Start Time : {{service.healthstatus_checkstart}} 
+Check End Time : {{service.healthstatus_checkend}}
+Health Status Message : {{service.healthstatus_info}}
+Next Check Time : {{service.healthstatus_nextcheck}}
+`}
+    {% endfor %}
+{% endfor %}
+function fetch_healthstatus() {
+    fetch(healthstatusstreamurl)
+    .then((response) => {
+        const decoderStream = new TextDecoderStream();
+        return response.body.pipeThrough(decoderStream)
+      })
+    .then((resbody) => {
+      const reader = resbody.getReader();
+      count = 0
+      remaindata = ""
+      function readdata() {
+          // "done" is a Boolean and value a "Uint8Array"
+          reader.read().then(({ done, value }) => {
+          // If there is no more data to read
+              if (done) {  
+                  setTimeout(fetch_healthstatus,5)
+                  return;
+              }
+              console.log(value)
+              if (value === null){
+                  readdata()
+                  return
+              }
+
+              if (remaindata != "") {
+                  value = remaindata + value
+
+              }
+              datas = value.split("\n")
+              if (datas[datas.length - 1] != "") {
+                  remaindata = datas[datas.length - 1]
+              }
+              count += 1
+              for(i = 0;i < datas.length - 1;i++) {
+                  try{
+                      datas[i] = JSON.parse(datas[i])
+                      if (datas[i] == "reload") {
+                          window.location.reload(true);
+                          continue
+                      }
+                      if (datas[i][1] === null) {
+                          continue
+                      }
+                      try{
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname").src = "/static/img/" + datas[i][1][1][2] + "-traffic-light.jpg"
+                      }catch(error) {
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname-td").innerHTML = '<img id="' + datas[i][0][0] + '-' + datas[i][0][1] + '-statusname" src="/static/img/' + datas[i][1][1][2] + '-traffic-light.jpg" style="width:32px;height:32px"/>'
+                      }
+                      document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-checkstart").innerHTML = datas[i][1][1][0]   
+                      healthstatus[datas[i][0][0]][datas[i][0][1]]["message"] = "Health Status : " + datas[i][1][1][2] + `
+    Check Start Time : ` + datas[i][1][1][0] + `
+    Check End Time : ` + datas[i][1][1][1] + `
+    Health Status Message : ` + datas[i][1][1][3] + `
+    Next Check Time : `  + datas[i][1][0] + `
+    `
+                      healthstatus[datas[i][0][0]][datas[i][0][1]]["nextcheck"] = datas[i][1][0]
+                  } catch(error) {
+                      continue
+                  }
+              }
+              // Get the data and send it to the browser via the controller
+              // Check chunks by logging to the console
+              readdata();
+            })
+          .catch(error => {
+              console.log("Read data error : " + error)
+              setTimeout(fetch_healthstatus,5)
+          });
+    
+      }
+      readdata()
+    })
+    .catch(error => {
+        console.log("Fetch data error : " + error)
+        setTimeout(fetch_healthstatus,5)
+
+    })
+}
+
+fetch_healthstatus()
+</script>
+
+<img src="/static/img/green-traffic-light.jpg" style="width:32px;height:32px;display:none" alt="cache the image"/>
+<img src="/static/img/yellow-traffic-light.jpg" style="width:32px;height:32px;display:none" alt="cache the image"/>
+<img src="/static/img/red-traffic-light.jpg" style="width:32px;height:32px;display:none" alt="cache the image"/>
+<img src="/static/img/error-traffic-light.jpg" style="width:32px;height:32px;display:none" alt="cache the image"/>
+<table border=1 style="width:90%">
+{% for section in healthcheck.sectionlist %}
+    <tr><th colspan="4">{{section.name}}</th></tr>
+    {% for service in section.servicelist %}
+    <tr>
+        <td>{{service.name}}</td>
+        <td style="width:40px" id="{{section.sectionid}}-{{service.serviceid}}-statusname-td">
+          {% if service.healthstatus_name != "" %}
+          <img id="{{section.sectionid}}-{{service.serviceid}}-statusname" src="/static/img/{{ service.healthstatus_name }}-traffic-light.jpg" style="width:32px;height:32px"/>
+          {% endif %}
+        </td>
+        <td><div id="{{section.sectionid}}-{{service.serviceid}}-checkstart">{{service.healthstatus_checkstart}}</div></td>
+        <td><button onclick="alert(healthstatus['{{section.sectionid}}']['{{service.serviceid}}']['message'])">Info</button> 
+            {% if service.healthstatus_persistent %}
+            | <A target="_blank" href="/healthcheck/detail/{{service.sectionid}}/{{service.serviceid}}">Detail</A>
+            {% endif %}
+            {% if service.historyenabled %}
+            | <A target="_blank" href="/healthcheck/history/{{service.sectionid}}/{{service.serviceid}}">History</A>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+{% endfor %}
+</table>
+

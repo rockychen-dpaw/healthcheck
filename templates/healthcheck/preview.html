@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Preview Editing Health Checks</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="DBCA Spatial Support System health checks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        {% include 'healthcheck/inc/healthcheck.css' %}
+    </style>
+    <script type="text/javascript">
+        healthstatusstreamurl = "/healthcheck/editinghealthstatusstream";
+        {% include 'healthcheck/inc/healthcheck.js' %}
+    </script>
+  </head>
+  <body>
+      <h3>DBCA Spatial Support System health checks 
+          <button onclick="start_preview();">Start</button>
+          <button onclick="stop_preview();">Stop</button>
+      </h3>
+      {% if message %}
+      <h4 style="color:red;white-space:pre;">{{message}}xx<h4>
+      {% endif %}
+
+      {% include 'healthcheck/inc/healthcheckstatus.html' %}
+
+  </body>
+</html>

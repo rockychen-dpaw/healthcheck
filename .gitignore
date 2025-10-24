@@ -4,3 +4,4 @@ venv
 .env
 .swp
 .python-version
+data_dir/

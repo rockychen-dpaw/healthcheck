@@ -1,0 +1,12 @@
+body {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.button-success {
+  background: rgb(28, 184, 65);
+}
+
+.button-error {
+  background: rgb(202, 60, 60);
+}

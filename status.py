@@ -9,6 +9,10 @@ import defusedxml.ElementTree as ET
 import httpx
 import humanize
 from quart import Quart, jsonify, make_response, render_template
+from app import app,application
+from healthcheck import healthcheckservice
+from healthcheck import shutdown
+
 
 dot_env = os.path.join(os.getcwd(), ".env")
 if os.path.exists(dot_env):
@@ -17,7 +21,7 @@ if os.path.exists(dot_env):
     load_dotenv()
 TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))
 DEBUG = os.getenv("DEBUG", False)
-app = application = Quart(__name__, template_folder="templates", static_folder="static")
+#app = application = Quart(__name__, template_folder="templates", static_folder="static")
 app.config.from_mapping(DEBUG=DEBUG, TZ=TZ)
 
 
@@ -770,6 +774,8 @@ async def api_kmi_layer_responds(kmi_layer):
     else:
         return ERROR_BUTTON_HTML
 
-
 if __name__ == "__main__":
-    application.run(host="0.0.0.0", port=os.environ.get("PORT", 8080), use_reloader=True)
+    loop = shutdown.patch_asyncio()
+
+    application.run(host="0.0.0.0", port=os.environ.get("PORT", 8080), use_reloader=True,loop=loop)
+    print("**={}".format(application))

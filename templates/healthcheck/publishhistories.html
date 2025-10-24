@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>DBCA Essential Systems Health Check Editing</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="DBCA Spatial Support System health checks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <style>
+        {% include 'healthcheck/inc/healthcheck.css' %}
+    </style>
+    <script>
+        {% include 'healthcheck/inc/healthcheck.js' %}
+    </script>
+  </head>
+  <body>
+      <h3>Healtch Check Publish Histories
+      </h3>
+      {% if message %}
+      <h4 style="color:red;white-space:pre;">{{message}}<h4>
+      {% endif %}
+      <form action="/healthcheck/rollback" method="POST">
+      <table border=1 style="width:90%">
+      {% for history in publishhistories %}
+      <tr>
+          <td style="width:150px">{{history[0]}}</td>
+          <td>{{history[1]}}</td>
+          <td style="width:200px">{{history[2]}}</td>
+          <td>{{history[3]}}</td>
+          <td><button type="submmit" name="configfile" value="{{history[1]}}">Rollback</button></td>
+      </tr>
+      {% endfor %}
+      </table>
+      </form>
+
+  </body>
+</html>

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>DBCA Essential Systems Health Check Editing</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="DBCA Spatial Support System health checks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <style>
+        {% include 'healthcheck/inc/healthcheck.css' %}
+    </style>
+    <script>
+        {% include 'healthcheck/inc/healthcheck.js' %}
+    </script>
+  </head>
+  <body>
+      <form action="/healthcheck/config" method="POST">
+      <h3>DBCA Essential Systems Health Check Editing 
+          <A target="Preview Editing health check configuration" href="/healthcheck/config/preview">Preview</A>
+          <A  href="/healthcheck/config/publish">Publish</A>
+          <button type="submit" name="action" value="save">Save</button>
+          <button type="submit" name="action" value="reset">Reset</button>
+      </h3>
+      {% if message %}
+      <h4 style="color:red;white-space:pre;">{{message}}<h4>
+      {% endif %}
+      <textarea name="healthcheckconfig" style="width:95%;height:800px;">{{healthcheckconfig}}</textarea>
+      </form>
+
+  </body>
+</html>

@@ -1,0 +1,22 @@
+import os
+import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+logger = logging.getLogger(__name__)
+
+async def ainput(prompt: str = "") -> str:
+    """Asynchronously get user input."""
+    try:
+        with ThreadPoolExecutor(1, "AsyncInput") as executor:
+            return await asyncio.get_event_loop().run_in_executor(executor, input, prompt)
+    except EOFError as ex:
+        await shutdown.process_userinterruption()
+
+def remove_file(f):
+    try:
+        os.remove(f)
+    except Exception as ex:
+        if os.path.exists(f):
+            logger.error("Failed to remove the file '{}'. {} : {}".format(f,ex.__class__.__name__,str(ex)))
+
