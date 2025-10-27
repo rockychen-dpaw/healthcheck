@@ -2,11 +2,12 @@ import asyncio
 import logging
 import traceback
 import json
+import os
 from signal import SIGINT, SIGTERM
 from quart import  render_template,request,stream_with_context,redirect
 from datetime import datetime,timedelta
 
-from app import app
+from status import app,application
 from . import settings
 from .healthcheckclient import healthstatuslistener,editinghealthstatuslistener
 from .healthcheck import healthcheck
@@ -247,3 +248,8 @@ async def editinghealthstatusstream():
 
     return async_generator(), 200, None
 
+if __name__ == "__main__":
+    loop = shutdown.patch_asyncio()
+
+    application.run(host="0.0.0.0", port=os.environ.get("PORT", 8080), use_reloader=True,loop=loop)
+    print("**={}".format(application))
