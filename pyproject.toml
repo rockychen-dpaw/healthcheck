@@ -11,16 +11,16 @@ dependencies = [
   "pytz===2025.2",
   "python-dotenv==1.1.1",
   "httpx==0.28.1",
-  "humanize==4.13.0",
+  "humanize==4.14.0",
   "defusedxml==0.7.1",
 ]
 
 [dependency-groups]
 dev = [
-  "ipython>=9.4.0",
+  "ipython>=9.6.0",
   "pre-commit>=4.3.0",
-  "pytest>=8.4.1",
-  "pytest-asyncio>=1.1.0",
+  "pytest>=8.4.2",
+  "pytest-asyncio>=1.2.0",
 ]
 
 [tool.ruff]
