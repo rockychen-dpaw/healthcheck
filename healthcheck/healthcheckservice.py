@@ -4,8 +4,10 @@ import traceback
 import json
 from signal import SIGINT, SIGTERM
 from quart import  render_template,request,stream_with_context,redirect
+from datetime import datetime,timedelta
 
 from app import app
+from . import settings
 from .healthcheckclient import healthstatuslistener,editinghealthstatuslistener
 from .healthcheck import healthcheck
 from .socket import commandclient
@@ -32,17 +34,25 @@ async def initialize():
 async def post_shutdown():
     await shutdown.shutdown()
 
-@app.route("/healthcheck/status")
-async def status():
+async def ping():
+    start = datetime.now()
+    nextcheck = start + timedelta(seconds = settings.HEARTBEAT_TIME) 
     try:
-        status = await commandclient.exec("healthcheck") 
-        return {"status":status[0],"message":status[1]}
+        res = await commandclient.exec("healthcheck",0) 
+        msg = res[1]
+        status = "green" if res[0] else "red"
     except Exception as ex:
-        return {"status":False, "message":"{}:{}".format(ex.__class__.__name__,str(ex))}
+        status = "red"
+        msg = "{}:{}".format(ex.__class__.__name__,str(ex))
+    finally:
+        end = datetime.now()
+    return "{}\n".format(json.dumps([["healthcheck","healthcheck"],[nextcheck,[start,end,status,msg,False ]]],cls=serializers.JSONFormater)).encode()
 
 @app.route("/healthcheck/dashboard")
 async def dashboard():
-    return await render_template("healthcheck/dashboard.html",healthcheck=healthcheck)
+    healthservice_nextcheck = datetime.now() + timedelta(seconds=settings.HEARTBEAT_TIME + 1)
+    healthservice_nextcheck = int(healthservice_nextcheck.timestamp()) * 1000
+    return await render_template("healthcheck/dashboard.html",healthcheck=healthcheck,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL)
 
 @app.route("/healthcheck/healthstatusstream")
 async def healthstatusstream():
@@ -50,13 +60,28 @@ async def healthstatusstream():
     async def async_generator():
         for section in healthcheck.sectionlist:
             for service in section.servicelist:
-                yield "{}\n".format(json.dumps([[section.sectionid,service.serviceid],service.healthstatus],cls=serializers.JSONFormater)).encode()
+                if service.healthstatus:
+                    yield "{}\n".format(json.dumps([[section.sectionid,service.serviceid],service.healthstatus],cls=serializers.JSONFormater)).encode()
 
+        print("&&&&&&&&&&&&&&&&&&&&&&&&")
+        servicestatus = await ping()
+        yield servicestatus
         reader = healthstatuslistener.get_healthstatusreader()
         while not shutdown.shutdowning:
-            await healthstatuslistener.wait()
+            try:
+                async with asyncio.timeout(settings.HEARTBEAT_TIME):
+                    await healthstatuslistener.wait()
+                    timeout = False
+            except TimeoutError as ex:
+                timeout = True
             for healthstatus in reader.items():
                 yield "{}\n".format(json.dumps(healthstatus,cls=serializers.JSONFormater)).encode()
+            if timeout:
+                healthservicestatus = await ping()
+                yield healthservicestatus
+            else:
+                now = datetime.now()
+                yield "{}\n".format(json.dumps([["healthcheck","healthcheck"],[now + timedelta(seconds=settings.HEARTBEAT_TIME),[now,now,"green","Tested by other service check.",False ]]],cls=serializers.JSONFormater)).encode()
 
 
     return async_generator(), 200, None
@@ -160,7 +185,9 @@ async def preview_editing_healthcheck():
         traceback.print_exc()
         msg = str(ex)
 
-    return await render_template("healthcheck/preview.html",healthcheck=healthcheck.editing_healthcheck,message=msg)
+    healthservice_nextcheck = datetime.now() + timedelta(seconds=settings.HEARTBEAT_TIME + 1)
+    healthservice_nextcheck = int(healthservice_nextcheck.timestamp()) * 1000
+    return await render_template("healthcheck/preview.html",healthcheck=healthcheck.editing_healthcheck,message=msg,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL)
 
 @app.route("/healthcheck/config/preview/start",methods=["GET"])
 async def start_preview_editing_healthcheck():
@@ -197,11 +224,25 @@ async def editinghealthstatusstream():
             for service in section.servicelist:
                 yield "{}\n".format(json.dumps([[section.sectionid,service.serviceid],service.healthstatus],cls=serializers.JSONFormater)).encode()
 
+        servicestatus = await ping()
+        yield servicestatus
         reader = editinghealthstatuslistener.get_healthstatusreader()
         while not shutdown.shutdowning:
-            await healthstatuslistener.wait()
+            try:
+                async with asyncio.timeout(settings.HEARTBEAT_TIME):
+                    await editinghealthstatuslistener.wait()
+                    timeout = False
+            except TimeoutError as ex:
+                timeout = True
+
             for healthstatus in reader.items():
                 yield "{}\n".format(json.dumps(healthstatus,cls=serializers.JSONFormater)).encode()
+            if timeout:
+                healthservicestatus = await ping()
+                yield healthservicestatus
+            else:
+                now = datetime.now()
+                yield "{}\n".format(json.dumps([["healthcheck","healthcheck"],[now + timedelta(seconds=settings.HEARTBEAT_TIME),[now,now,"green","Tested by other service check.",False ]]],cls=serializers.JSONFormater)).encode()
 
 
     return async_generator(), 200, None

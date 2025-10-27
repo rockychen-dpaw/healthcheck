@@ -11,7 +11,7 @@ class JSONFormater(json.JSONEncoder):
         
     def default(self, obj):
         if isinstance(obj, datetime):
-            return obj.strftime("%Y-%m-%d %H:%M:%S.%f")
+            return obj.strftime("%Y-%m-%dT%H:%M:%S.%f")
         elif isinstance(obj, date):
             return obj.strftime(obj,"%Y-%m-%d")
         elif isinstance(obj, timedelta):

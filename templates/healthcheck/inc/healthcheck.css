@@ -10,3 +10,41 @@ body {
 .button-error {
   background: rgb(202, 60, 60);
 }
+
+.healthstatuscontent {
+    display:block;
+    width: 90%
+}
+
+.servicehealthstatus {
+    display: inline-block;
+    background-color: bisque;
+}
+.servicename {
+    width: 100px;
+    display: inline-block;
+    text-wrap: wrap;
+    text-align: right;
+    font-weight: bold;
+    vertical-align: middle;
+}
+
+.healthstatus {
+    width: 40px;
+    display: inline-block;
+    padding-left: 10px;
+    text-align: center;
+}
+.healthstatusbuttons {
+    width: 150px;
+    display: inline-block;
+    padding-left: 10px;
+    vertical-align: middle;
+}
+.sectionname {
+    display:block;
+    background-color: grey;
+    text-align: center;
+    font-weight: bold;
+    vertical-align: middle;
+}

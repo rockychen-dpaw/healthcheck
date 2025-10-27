@@ -53,7 +53,7 @@ class SocketClient(object):
         await self._conn.close()
         self._conn = None
 
-    async def get_connection(self):
+    async def get_connection(self,reconnect=True):
         """
         Return a connection otherwise throw exception SystemShutdown or SocketClientTypeNotSupport
 
@@ -98,6 +98,8 @@ class SocketClient(object):
                         await conn.close()
                     if isinstance(ex,(exceptions.SystemShutdown,exceptions.SocketClientTypeNotSupport)):
                         raise ex
+                    elif not reconnect:
+                        raise ex
                     else:
                         await asyncio.sleep(settings.BLOCK_TIMEOUT)
                         continue
@@ -116,7 +118,7 @@ class SocketClient(object):
 
         while not shutdown.shutdowning : 
             try:
-                conn = await self.get_connection()
+                conn = await self.get_connection(False if reconnect_attempts >= 0 else True)
                 await conn.send(data)
                 return
             except exceptions.SystemShutdown as ex:
@@ -130,7 +132,6 @@ class SocketClient(object):
                 await self.close()
                 reconnect += 1
                 if (reconnect_attempts == -1 or reconnect <= reconnect_attempts): 
-                    reconnect += 1
                     continue
                 else:
                     raise ex
@@ -146,7 +147,7 @@ class SocketClient(object):
         while not shutdown.shutdowning: 
             try:
                 data = None
-                conn = await self.get_connection()
+                conn = await self.get_connection(False if reconnect_attempts >= 0 else True)
                 data = await conn.receive()
                 logger.debug("{}: Succeed to receive the data: {}".format(self,data))
                 return data
@@ -174,8 +175,9 @@ class CommandClient(SocketClient):
         super().__init__()
         self._lock = asyncio.Lock()
 
-    async def exec(self,command):
+    async def exec(self,command,reconnect_attempts=-1):
         async with self._lock:
+            reconnect = 0
             while True:
                 try:
                     logger.debug("{}: Begin to send command({}) to server".format(self,command))
@@ -197,10 +199,18 @@ class CommandClient(SocketClient):
                 except exceptions.FailedResponse as ex:
                     raise ex
                 except exceptions.ConnectionClosed as ex:
-                    continue
+                    reconnect += 1
+                    if (reconnect_attempts == -1 or reconnect <= reconnect_attempts): 
+                        continue
+                    else:
+                        raise ex
                 except Exception as ex:
                     logger.error("{}: Unexpected exception.\n{}".format(self,traceback.format_exc()))
-                    continue
+                    reconnect += 1
+                    if (reconnect_attempts == -1 or reconnect <= reconnect_attempts): 
+                        continue
+                    else:
+                        raise ex
 
 commandclient = CommandClient("command")
 

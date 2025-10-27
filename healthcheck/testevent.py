@@ -2,6 +2,8 @@ import asyncio
 import random
 import sys
 
+from . import settings
+
 class Event(object):
     def __init__(self):
         self.locks = [asyncio.Event() for i in range(settings.ASYNCIO_EVENTS)]
@@ -11,7 +13,16 @@ class Event(object):
         self._counter = 0
 
     async def wait(self):
-        await self.locks[self.index].wait()
+        while True:
+            try:
+                async with asyncio.timeout(1):
+                    await self.locks[self.index].wait()
+                    print("****************waken up")
+                    break
+            except TimeoutError as ex:
+                print("****************{}: {}".format(ex.__class__.__name__,str(ex)))
+                continue
+
 
     def set(self):
         i = self.index
@@ -90,7 +101,7 @@ class Listener(object):
 shutdown = False
 async def trig_event(lock):
     while not shutdown:
-        await asyncio.sleep(1)
+        await asyncio.sleep(3)
         lock.set()
 
     print("Trig event exits.")

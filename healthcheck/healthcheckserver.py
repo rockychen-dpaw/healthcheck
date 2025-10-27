@@ -21,13 +21,6 @@ class BaseHealthStatusSubscriptor(socket.Connection):
         self._send_task = None
         self.__class__.subscriptors.append(self)
 
-
-    async def initialize(self):
-        await self.send([socket.HEALTHCONFIG_HAHSCODE,healthcheck.config_hashcode])
-        for section in healthcheck.sections.values():
-            for service in section["services"].values():
-                await self.send([socket.INITIAL_HEALTHSTATUS,[[service.sectionid,service.serviceid],service["healthstatus"]]])
-
     async def receive(self):
         raise Exception("Receiving data Not Supported")
 
@@ -37,7 +30,6 @@ class BaseHealthStatusSubscriptor(socket.Connection):
             self.__class__.subscriptors.remove(self)
         except ValueError as ex:
             pass
-
 
     @classmethod
     async def _send_data(cls,data):
@@ -76,6 +68,13 @@ class HealthStatusSubscriptor(BaseHealthStatusSubscriptor):
     _lock = asyncio.Lock()
     conn_type = socket.HEALTHSTATUS_SUBSCRIPTOR
 
+    async def initialize(self):
+        await self.send([socket.HEALTHCONFIG_HAHSCODE,healthcheck.config_hashcode])
+        for section in healthcheck.sections.values():
+            for service in section["services"].values():
+                if service.get("healthstatus"):
+                    await self.send([socket.INITIAL_HEALTHSTATUS,[[service.sectionid,service.serviceid],service["healthstatus"]]])
+
     @classmethod
     async def healthconfig_changed(cls):
         await cls._send_data([socket.HEALTHCONFIG_HAHSCODE,healthcheck.config_hashcode])
@@ -85,6 +84,13 @@ class EditingHealthStatusSubscriptor(BaseHealthStatusSubscriptor):
     subscriptors = []
     _lock = asyncio.Lock()
     conn_type = socket.EDITING_HEALTHSTATUS_SUBSCRIPTOR
+
+    async def initialize(self):
+        await self.send([socket.HEALTHCONFIG_HAHSCODE,healthcheck.editing_healthcheck.config_hashcode])
+        for section in healthcheck.editing_healthcheck.sections.values():
+            for service in section["services"].values():
+                if service.get("healthstatus"):
+                    await self.send([socket.INITIAL_HEALTHSTATUS,[[service.sectionid,service.serviceid],service["healthstatus"]]])
 
     @classmethod
     async def healthconfig_changed(cls):
@@ -132,7 +138,7 @@ class CommandConnection(socket.CommandConnection):
             healthcheck.stop_continuous_check()  
             await HealthStatusSubscriptor.healthconfig_changed()
             await healthcheck.continuous_check(self.server,taskcls=ServiceHealthCheckTask)
-        return [True,"OK"]
+        return [True,"Tested"]
 
     def healthcheck(self):
         if not healthcheck.is_continuous_check_started:

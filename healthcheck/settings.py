@@ -12,6 +12,17 @@ DEBUG = os.environ.get("DEBUG","true").lower() == "true"
 
 TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))  
 
+try:
+    HEARTBEAT_TIME = int(os.environ.get("HEARTBEAT_TIME"),10)
+    if HEARTBEAT_TIME <=0 :
+        HEARTBEAT_TIME = 10
+except:
+    HEARTBEAT_TIME = 10
+
+
+NEXTCHECK_TIMEOUT = int(os.environ.get("NEXTCHECK_TIMEOUT",30)) * 1000 #configured in seconds, tranform it to milliseconds
+NEXTCHECK_CHECKINTERVAL = int(os.environ.get("NEXTCHECK_CHECKINTERVAL",10)) * 1000 #configured in seconds, tranform it to milliseconds
+
 BLOCK_TIMEOUT = int(os.environ.get("BLOCK_TIMEOUT",5)) # in seconds, 
 SOCKET_ATTEMPTS = int(os.environ.get("SOCKET_ATTEMPTS",3))
 HEALTHCHECKSERVER_LOCAL = os.environ.get("HEALTHCHECKSERVER_LOCAL","true").lower() == "true"

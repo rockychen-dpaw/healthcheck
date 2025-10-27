@@ -1,5 +1,6 @@
 <script type="text/javascript">
-healthstatus={}
+let healthstatus={}
+healthstatus["healthcheck"] = {"healthcheck":{"message":"Initial","nextcheck":new Date({{healthservice_nextcheck}}) } }
 {% for section in healthcheck.sectionlist %}
 healthstatus['{{section.sectionid}}'] = {}
     {% for service in section.servicelist %}
@@ -11,7 +12,39 @@ Next Check Time : {{service.healthstatus_nextcheck}}
 `}
     {% endfor %}
 {% endfor %}
+
+let connect_msg = "initial connecting..."
+let connected = false
+
+function browserside_check() {
+    Object.entries(healthstatus).forEach(([section, sectionstatus]) => {
+        Object.entries(sectionstatus).forEach(([service,servicestatus]) => {
+            if (!servicestatus["nextcheck"]) {
+                return
+            }
+            now = new Date()
+            if (now - servicestatus["nextcheck"] > {{nextcheck_timeout}} ) {
+                //next check not running, maybe caused by healthcheck service or the target service
+                try{
+                    document.getElementById(section+ "-" + service + "-statusname").src = "/static/img/error-traffic-light.jpg"
+                }catch(error) {
+                    document.getElementById(section+ "-" + service + "-statusname-div").innerHTML = '<img id="' + section + '-' + service + '-statusname" src="/static/img/error-traffic-light.jpg" style="width:32px;height:32px"/>'
+                }
+                nextcheck = servicestatus["nextcheck"]
+                nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + " " + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
+                healthstatus[section][service]["message"] = `Health Status : error 
+    Health Status Message : Next Health check should be executed ` + Math.floor((now - servicestatus["nextcheck"]) / 1000) + ` seconds ago.
+    Next Check Time:` + nextcheckstr + `
+    `
+            }
+        });
+    });
+}
+
+setInterval(browserside_check,{{nextcheck_checkinterval}})
 function fetch_healthstatus() {
+    connected = false
+    
     fetch(healthstatusstreamurl)
     .then((response) => {
         const decoderStream = new TextDecoderStream();
@@ -20,16 +53,18 @@ function fetch_healthstatus() {
     .then((resbody) => {
       const reader = resbody.getReader();
       count = 0
+      connected = true
       remaindata = ""
       function readdata() {
           // "done" is a Boolean and value a "Uint8Array"
           reader.read().then(({ done, value }) => {
           // If there is no more data to read
               if (done) {  
+                  connect_msg = "All data are fetched."
                   setTimeout(fetch_healthstatus,5)
                   return;
               }
-              console.log(value)
+              //console.log(value)
               if (value === null){
                   readdata()
                   return
@@ -57,16 +92,18 @@ function fetch_healthstatus() {
                       try{
                           document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname").src = "/static/img/" + datas[i][1][1][2] + "-traffic-light.jpg"
                       }catch(error) {
-                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname-td").innerHTML = '<img id="' + datas[i][0][0] + '-' + datas[i][0][1] + '-statusname" src="/static/img/' + datas[i][1][1][2] + '-traffic-light.jpg" style="width:32px;height:32px"/>'
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname-div").innerHTML = '<img id="' + datas[i][0][0] + '-' + datas[i][0][1] + '-statusname" src="/static/img/' + datas[i][1][1][2] + '-traffic-light.jpg" style="width:32px;height:32px"/>'
                       }
                       document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-checkstart").innerHTML = datas[i][1][1][0]   
+                      nextcheck = new Date(datas[i][1][0])
+                      nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + " " + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
                       healthstatus[datas[i][0][0]][datas[i][0][1]]["message"] = "Health Status : " + datas[i][1][1][2] + `
     Check Start Time : ` + datas[i][1][1][0] + `
     Check End Time : ` + datas[i][1][1][1] + `
     Health Status Message : ` + datas[i][1][1][3] + `
-    Next Check Time : `  + datas[i][1][0] + `
+    Next Check Time : `  + nextcheckstr + `
     `
-                      healthstatus[datas[i][0][0]][datas[i][0][1]]["nextcheck"] = datas[i][1][0]
+                      healthstatus[datas[i][0][0]][datas[i][0][1]]["nextcheck"] = nextcheck
                   } catch(error) {
                       continue
                   }
@@ -76,7 +113,7 @@ function fetch_healthstatus() {
               readdata();
             })
           .catch(error => {
-              console.log("Read data error : " + error)
+              connect_msg = "Connection Error: " + error
               setTimeout(fetch_healthstatus,5)
           });
     
@@ -85,8 +122,8 @@ function fetch_healthstatus() {
     })
     .catch(error => {
         console.log("Fetch data error : " + error)
+        connect_msg = "Connection Error: " + error
         setTimeout(fetch_healthstatus,5)
-
     })
 }
 
@@ -97,28 +134,37 @@ fetch_healthstatus()
 <img src="/static/img/yellow-traffic-light.jpg" style="width:32px;height:32px;display:none" alt="cache the image"/>
 <img src="/static/img/red-traffic-light.jpg" style="width:32px;height:32px;display:none" alt="cache the image"/>
 <img src="/static/img/error-traffic-light.jpg" style="width:32px;height:32px;display:none" alt="cache the image"/>
-<table border=1 style="width:90%">
+<div class="healthstatuscontent">
+    <div class="servicehealthstatus">
+        <div class="servicename">healthcheck</div>
+        <div class="healthstatus" id="healthcheck-healthcheck-statusname-div">
+          <img id="healthcheck-healthcheck-statusname" src="/static/img/green-traffic-light.jpg" style="width:32px;height:32px"/>
+        </div>
+        <div class="healthstatusbuttons">
+            <button onclick="alert(healthstatus['healthcheck']['healthcheck']['message'])">Info</button> 
+        </div>
+    </div>
 {% for section in healthcheck.sectionlist %}
-    <tr><th colspan="4">{{section.name}}</th></tr>
+    <div class="sectionname">{{section.name}}</div>
     {% for service in section.servicelist %}
-    <tr>
-        <td>{{service.name}}</td>
-        <td style="width:40px" id="{{section.sectionid}}-{{service.serviceid}}-statusname-td">
-          {% if service.healthstatus_name != "" %}
-          <img id="{{section.sectionid}}-{{service.serviceid}}-statusname" src="/static/img/{{ service.healthstatus_name }}-traffic-light.jpg" style="width:32px;height:32px"/>
-          {% endif %}
-        </td>
-        <td><div id="{{section.sectionid}}-{{service.serviceid}}-checkstart">{{service.healthstatus_checkstart}}</div></td>
-        <td><button onclick="alert(healthstatus['{{section.sectionid}}']['{{service.serviceid}}']['message'])">Info</button> 
+    <div class="servicehealthstatus">
+        <div class="servicename">{{service.name}}</div>
+        <div class="healthstatus" id="{{section.sectionid}}-{{service.serviceid}}-statusname-div">
+              {% if service.healthstatus_name != "" %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname" src="/static/img/{{ service.healthstatus_name }}-traffic-light.jpg" style="width:32px;height:32px"/>
+              {% endif %}
+        </div>
+        <div class="healthstatusbuttons">
+            <button onclick="alert(healthstatus['{{section.sectionid}}']['{{service.serviceid}}']['message'])">Info</button> 
             {% if service.healthstatus_persistent %}
             | <A target="_blank" href="/healthcheck/detail/{{service.sectionid}}/{{service.serviceid}}">Detail</A>
             {% endif %}
             {% if service.historyenabled %}
             | <A target="_blank" href="/healthcheck/history/{{service.sectionid}}/{{service.serviceid}}">History</A>
             {% endif %}
-        </td>
-    </tr>
+        </div>
+    </div>
     {% endfor %}
 {% endfor %}
-</table>
+</div>
 

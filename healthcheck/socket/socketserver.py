@@ -181,6 +181,7 @@ class SocketServer(object):
                 logger.error("The connection({1} -> {0}): Connection type({2}) Not Support".format(self,clientaddr,conn_type))
                 await conn.close()
         except Exception as ex:
+            traceback.print_exc()
             #Failed to receive the first message, close the connection
             logger.error("The connection({1} -> {0}): Failed to create the connection.{2}:{3}".format(self,clientaddr,ex.__class__.__name__,str(ex)))
             await conn.close()
