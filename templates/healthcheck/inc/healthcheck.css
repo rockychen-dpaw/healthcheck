@@ -11,35 +11,21 @@ body {
   background: rgb(202, 60, 60);
 }
 
-.healthstatuscontent {
-    display:block;
+.healthstatusblock {
     width: 90%
 }
+.sectionhealthstatusrow {
 
-.servicehealthstatus {
-    display: inline-block;
-    background-color: bisque;
 }
-.servicename {
-    width: 100px;
-    display: inline-block;
-    text-wrap: wrap;
-    text-align: right;
-    font-weight: bold;
-    vertical-align: middle;
+.sectionhealthstatuscolumn {
+
 }
 
-.healthstatus {
-    width: 40px;
-    display: inline-block;
-    padding-left: 10px;
-    text-align: center;
+.sectionnamerow {
+
 }
-.healthstatusbuttons {
-    width: 150px;
-    display: inline-block;
-    padding-left: 10px;
-    vertical-align: middle;
+.sectionnamecolumn {
+
 }
 .sectionname {
     display:block;
@@ -48,3 +34,44 @@ body {
     font-weight: bold;
     vertical-align: middle;
 }
+
+.servicename {
+    width: 100px;
+    height: 60px;
+    display: inline-block;
+    text-wrap: wrap;
+    text-align: right;
+    font-weight: bold;
+    vertical-align: 25px;
+}
+
+.servicehealthstatus {
+    display: inline-block;
+    height: 60px;
+    background-color: bisque;
+
+}
+.healthstatus {
+    width: 60px;
+    display: inline-block;
+    padding-left: 10px;
+    text-align: center;
+    height:60px;
+}
+.healthstatusimg {
+    width: 60px;
+    padding-left:10px;
+    height:60px;
+}
+.healthstatusbuttons {
+    width: 110px;
+    display: inline-block;
+    padding-left: 10px;
+    vertical-align: 25px;
+}
+.imgbutton {
+    width:24px;
+    height:24px;
+    vertical-align: -8px;
+}
+
