@@ -2,6 +2,9 @@ import os
 import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+
+from . import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,4 +22,18 @@ def remove_file(f):
     except Exception as ex:
         if os.path.exists(f):
             logger.error("Failed to remove the file '{}'. {} : {}".format(f,ex.__class__.__name__,str(ex)))
+
+def makedir(folder):
+    if not os.path.exists(folder):
+        try:
+            os.makedirs(folder)
+        except FileExistsError as ex:
+            pass
+        except Exception as ex:
+            raise ex
+    elif not os.path.isdir(folder):
+        raise Exception("The folder path({}) is not a directory".format(folder))
+
+def now():
+    return datetime.now().astimezone(settings.TZ)
 

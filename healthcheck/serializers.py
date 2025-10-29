@@ -11,6 +11,10 @@ class JSONFormater(json.JSONEncoder):
         
     def default(self, obj):
         if isinstance(obj, datetime):
+            if obj.tzinfo is not None and obj.tzinfo.utcoffset(obj) is not None and obj.tzinfo != settings.TZ:
+                #convert to default timezone
+                obj = obj.astimezone(settings.TZ)
+                
             return obj.strftime("%Y-%m-%dT%H:%M:%S.%f")
         elif isinstance(obj, date):
             return obj.strftime(obj,"%Y-%m-%d")

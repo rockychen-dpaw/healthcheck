@@ -95,6 +95,7 @@ class CommandConnection(CommandsMixin,Connection):
 
                             result = [status.SUCCEED,result]
                         except Exception as ex:
+                            traceback.print_exc()
                             result = [status.FAILED,str(ex)]
                     else:
                         result = [status.FAILED,"Command({}) Not Support".format(command)]

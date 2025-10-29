@@ -558,7 +558,12 @@ def _format_message_factory(config):
 
 def get_message_factory(config):
     if not config:
-        return lambda res:""
+        def _func(res):
+            if res.status_code >=200 and res.status_code < 300:
+                return "OK"
+            else:
+                return res.text
+        return _func
 
     if isinstance(config,str):
         if config.startswith("lambda"):
