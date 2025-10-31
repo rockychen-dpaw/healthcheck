@@ -1,4 +1,5 @@
 import os
+import shutil
 import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -34,6 +35,16 @@ def makedir(folder):
     elif not os.path.isdir(folder):
         raise Exception("The folder path({}) is not a directory".format(folder))
 
+def deletedir(folder):
+    try:
+        shutil.rmtree(folder)
+    except FileNotFoundError as ex:
+        pass
+    except Exception as ex:
+        raise Exception("Failed to remove the folder({}).{}: {}".format(folder,ex.__class__.__name__,str(ex)))
+
+
 def now():
     return datetime.now().astimezone(settings.TZ)
+
 

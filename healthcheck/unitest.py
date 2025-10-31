@@ -16,7 +16,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         jsonfile = sys.argv[1]
     else:
-        jsonfile = os.environ.get("HALTHCHECK_CONFIG_FILE")
+        jsonfile = os.environ.get("HEALTHCHECK_CONFIGFILE")
     if not jsonfile:
         jsonfile = os.path.join(settings.HOME_DIR,"unitests.json")
 

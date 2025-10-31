@@ -45,7 +45,7 @@ setInterval(browserside_check,{{nextcheck_checkinterval}})
 function fetch_healthstatus() {
     connected = false
     
-    fetch(healthstatusstreamurl)
+    fetch("{{baseurl}}/healthstatusstream")
     .then((response) => {
         const decoderStream = new TextDecoderStream();
         return response.body.pipeThrough(decoderStream)
@@ -103,6 +103,14 @@ function fetch_healthstatus() {
     Next Check Time : `  + nextcheckstr + `
     `
                       healthstatus[datas[i][0][0]][datas[i][0][1]]["nextcheck"] = nextcheck
+                      if (datas[i][1][1][4]) {
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details").style.display="inline";
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href= "{{baseurl}}/details/"+ datas[i][0][0] + "/" +  datas[i][0][1] + "/0/" + datas[i][1][1][0]
+                      } else{
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details").style.display="none";
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href="";
+                      }
+                      console.log( document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href)
                   } catch(error) {
                       continue
                   }
@@ -159,10 +167,19 @@ fetch_healthstatus()
         <div class="healthstatusbuttons">
             <A href="javascript:alert(healthstatus['{{section.sectionid}}']['{{service.serviceid}}']['message'])"><img src="/static/img/info.svg" class="imgbutton"/></A> 
             {% if service.healthstatus_persistent %}
-            | <A target="_blank" href="/healthcheck/detail/{{service.sectionid}}/{{service.serviceid}}"><img src="/static/img/details.svg" class="imgbutton"/></A>
+            <span id="{{section.sectionid}}-{{service.serviceid}}-details">
+            {% else %}
+            <span id="{{section.sectionid}}-{{service.serviceid}}-details" style="display:none">
             {% endif %}
+            | 
+            {% if service.healthstatus[1] %}
+            <A target="health check detail" id="{{section.sectionid}}-{{service.serviceid}}-details-link" href="{{baseurl}}/details/{{service.sectionid}}/{{service.serviceid}}/0/{{service.healthstatus[1][0].strftime('%Y-%m-%dT%H:%M:%S.%f')}}"><img src="/static/img/details.svg" class="imgbutton"/></A>
+            {% else %}
+            <A target="health check detail" id="{{section.sectionid}}-{{service.serviceid}}-details-link" href="#"><img src="/static/img/details.svg" class="imgbutton"/></A>
+            {% endif %}
+            </span>
             {% if service.historyenabled %}
-            | <A target="_blank" href="/healthcheck/history/{{service.sectionid}}/{{service.serviceid}}"><img src="/static/img/history.svg" class="imgbutton"/></A>
+            | <A target="health check history" href="{{baseurl}}/history/{{service.sectionid}}/{{service.serviceid}}"><img src="/static/img/history.svg" class="imgbutton"/></A>
             {% endif %}
         </div>
     </div>

@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from . import utils
+
 class CycleList:
     def __init__(self,maxlen):
         self._list = []
@@ -8,7 +10,7 @@ class CycleList:
         self._maxlen = maxlen 
         self._index = 0
         self._size = 0
-        self._id = int(datetime.now().timestamp())
+        self._id = int(utils.now().timestamp())
 
     def add(self, item):
         if self._index < len(self._list):

@@ -7,13 +7,14 @@ from .. import settings
 
 
 from .base import datanotfound
-from . import httpstatus,jsonresponse
+from . import httpstatus,jsonresponse,textresponse,httpheaders,redirect
+from .. import utils
 
 TZ = settings.TZ
 
 logger = logging.getLogger(__name__)
 
-modules = dict([(mod.name,mod) for mod in [httpstatus,jsonresponse] ])
+modules = dict([(mod.name,mod) for mod in [httpstatus,jsonresponse,textresponse,httpheaders,redirect] ])
 
 relativedate_re = re.compile("^\\s*(\\+|\\-)?(\\s*[0-9]+\\s*(days?|hours?|mins?|minutes?|seconds?))+\\s*$")
 flags_re = re.compile("(?P<flag>\\+|\\-)")
@@ -110,7 +111,7 @@ def _convert_datatype(val,dt,params=None):
             
             td = timedelta(days=days,hours=hours,minutes=minutes,seconds=seconds)
             if dt == datetime:
-                return datetime.now().astimezone(tz=TZ)  + td
+                return utils.now()  + td
             elif dt == date:
                 return date.today()  + td
             else:

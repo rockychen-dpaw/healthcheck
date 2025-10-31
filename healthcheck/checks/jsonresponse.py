@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 TZ = settings.TZ
 
-name = "jsonresponse"
+name = "json"
 
 def get_value(res,key=None):
     try:

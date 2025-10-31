@@ -10,7 +10,6 @@
         {% include 'healthcheck/inc/healthcheck.css' %}
     </style>
     <script type="text/javascript">
-        healthstatusstreamurl = "/healthcheck/editinghealthstatusstream";
         {% include 'healthcheck/inc/healthcheck.js' %}
     </script>
   </head>
@@ -20,7 +19,7 @@
           <button onclick="stop_preview();">Stop</button>
       </h3>
       {% if message %}
-      <h4 style="color:red;white-space:pre;">{{message}}xx<h4>
+      <h4 style="color:red;white-space:pre;">{{message}}<h4>
       {% endif %}
 
       {% include 'healthcheck/inc/healthcheckstatus.html' %}

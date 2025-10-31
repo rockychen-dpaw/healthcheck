@@ -1,4 +1,5 @@
 import fcntl
+import os
 
 class FileLock(object):
     def __init__(self,file):
@@ -18,6 +19,7 @@ class FileLock(object):
             finally:
                 try:
                     self._fd.close()
+                    os.remove(self.file)
                 except Exception as ex:
                     pass
                 finally:

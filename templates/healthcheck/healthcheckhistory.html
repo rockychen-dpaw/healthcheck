@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+      <title>{{service.sectionname}}->{{service.servicename}} Health Check Histories </title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="DBCA Spatial Support System health checks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <style>
+        {% include 'healthcheck/inc/healthcheck.css' %}
+    </style>
+    <script>
+        {% include 'healthcheck/inc/healthcheck.js' %}
+    </script>
+  </head>
+  <body>
+      <h3>Health Check Histories -> {{service.sectionname}} -> {{service.servicename}}
+      </h3>
+      {% if message %}
+      <h4 style="color:red;white-space:pre;">{{message}}<h4>
+      {% endif %}
+      <table class="healthcheckhistorytable">
+      <thead>
+      <tr><td colspan=4>
+          {% for p in pages %}
+                  {% if page.pageid == p.pageid %}
+                  <span style="width:120px;padding-left:10px;color:blue">{{p.starttime.strftime("%Y-%m-%d %H:%M:%S")}}</span>
+                  {% else %}
+                  <A style="width:120px;padding-left:10px" href="{{baseurl}}/history/{{service.sectionid}}/{{service.serviceid}}/{{p.pageid}}">{{p.starttime.strftime("%Y-%m-%d %H:%M:%S")}}</A>
+                  {% endif %}
+          </ul>
+          {% endfor %}
+      </td></tr>
+      <tr style="background-color:#4C763B">
+          <th style="width:200px"> Start Time</th>
+          <th style="width:200px"> End Time</th>
+          <th style="width:40px"> Status</th>
+          <th> Message</th>
+      </tr>
+      </thead>
+      <tbody>
+      {% if page %}
+      {% for item in page.reversed_pageitems() %}
+      <tr>
+          <td style="width:200px;">{{item[0].strftime('%Y-%m-%d %H:%M:%S.%f')}}</td>
+          <td style="width:200px;">{{item[1].strftime('%Y-%m-%d %H:%M:%S.%f')}}</td>
+          <td style="width:80px">
+              {% if item[2] != "" %}
+              <img src="/static/img/{{ item[2] }}.svg" />
+              {% endif %}
+              {% if item[4] %}
+              <A target="Health Check Details" href="{{baseurl}}/details/{{service.sectionid}}/{{service.serviceid}}/{{page.pageid}}/{{item[0].strftime('%Y-%m-%dT%H:%M:%S.%f')}}"><img src="/static/img/details.svg" style="padding-left:5px"/></A>
+              {% endif %}
+          </td>
+          <td >{{item[3]}}</td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+      </tbody>
+      </table>
+  </body>
+</html>

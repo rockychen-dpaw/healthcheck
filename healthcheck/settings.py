@@ -28,15 +28,24 @@ SOCKET_ATTEMPTS = int(os.environ.get("SOCKET_ATTEMPTS",3))
 HEALTHCHECKSERVER_LOCAL = os.environ.get("HEALTHCHECKSERVER_LOCAL","true").lower() == "true"
 HEALTHCHECKSERVER_PORT = int(os.environ.get("HEALTHCHECKSERVER_PORT",9080))
 
-HEALTHCHECK_CONFIG_FILE = os.environ.get("HALTHCHECK_CONFIG_FILE",os.path.join(HEALTHCHECK_DATA_DIR,"healthcheck.json"))
+HEALTHCHECK_CONFIGFILE = os.path.join(HEALTHCHECK_DATA_DIR,os.environ.get("HEALTHCHECK_CONFIGFILE","healthcheck.json"))
+
+HEALTHCHECK_CONDITION_VERBOSE = os.environ.get("HEALTHCHECK_CONDITION_VERBOSE","false").lower() == "true"
 
 try:
     HEALTHSTATUS_PAGESIZE = int(os.environ.get("HEALTHSTATUS_PAGESIZE",100))
-    if HEALTHSTATUS_PAGESIZE < 100:
-        HEALTHSTATUS_PAGESIZE = 100
+    #if HEALTHSTATUS_PAGESIZE < 100:
+    #    HEALTHSTATUS_PAGESIZE = 100
 except :
     HEALTHSTATUS_PAGESIZE = 100
 HEALTHSTATUS_BUFFER = int(os.environ.get("HEALTHSTATUS_BUFFER",1000))
+
+AUTH2_URL = os.environ.get("AUTH2_URL","auth2.dbca.wa.gov.au")
+AUTH2_USER = os.environ.get("AUTH2_USER")
+AUTH2_PASSWORD = os.environ.get("AUTH2_PASSWORD")
+AUTH2_TIMEOUT = float(os.environ.get("AUTH2_TIMEOUT",1))
+AUTH2_SSLVERIFY = os.environ.get("AUTH2_SSLVERIFY","true").lower() == "true"
+AUTH2_PERMCACHE_TIMEOUT = int(os.environ.get("AUTH2_PERMCACHE_TIMEOUT",300))  # in seconds
 
 HEALTHCHECK_PUBLISH_HISTORIES = int(os.environ.get("HEALTHCHECK_PUBLISH_HISTORIES",100))
 
