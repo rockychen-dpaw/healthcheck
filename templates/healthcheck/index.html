@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>DBCA Health Check</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="DBCA Spatial Support System health checks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <style>
+        {% include 'healthcheck/inc/healthcheck.css' %}
+    </style>
+    <script>
+        {% include 'healthcheck/inc/healthcheck.js' %}
+    </script>
+  </head>
+  <body>
+      <h3>DBCA Health Check </h3>
+      {% if can_admin %}
+      <A href="/healthcheck/config/systemview">Add View</A>
+      {% endif %}
+      {% include 'healthcheck/inc/messages.html' %}
+      <table  class="healthcheckhistorytable">
+      <tr>
+          <td style="width:200px">{{defaultview.id}}</td>
+          <td>{{defaultview.title}}</td>
+          <td>{{defaultview.description}}</td>
+          <td><A href="/healthcheck/dashboard">View</A></td>
+      </tr>
+      {% for view in systemviews %}
+      <tr>
+          <td style="width:150px">{{view.id}}</td>
+          <td>{{view.title}}</td>
+          <td>{{view.description}}</td>
+          <td>
+              {% if can_admin %}
+              <A href="/healthcheck/config/systemview/{{view.id}}">Edit</A> | 
+              <A href="/healthcheck/config/systemview/{{view.id}}/delete">Delete</A> | 
+              {% endif %}
+              <A href="/healthcheck/dashboard/{{view.id}}">View</A>
+          </td>
+      </tr>
+      {% endfor %}
+      </table>
+
+  </body>
+</html>

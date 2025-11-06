@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: healthcheckserver-statefulset
+spec:
+  template:
+    spec:
+      containers:
+        - name: healthcheckserver
+          envFrom:
+            - secretRef:
+                name: healthcheck-env-uat
+                optional: false

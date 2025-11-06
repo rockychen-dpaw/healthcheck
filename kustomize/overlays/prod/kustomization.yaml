@@ -4,6 +4,7 @@ nameSuffix: -prod
 resources:
   - ../../base
   - ingress.yaml
+  - deployment_hpa.yaml
   - pdb.yaml
 secretGenerator:
   - name: healthcheck-env

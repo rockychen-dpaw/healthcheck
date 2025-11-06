@@ -11,7 +11,7 @@ import httpx
 from status import app,application
 from . import settings
 from .healthcheckclient import healthstatuslistener,editinghealthstatuslistener
-from .healthcheck import healthcheck,LastHealthCheck
+from .healthcheck import healthcheck,LastHealthCheck,SystemViewMeta
 from .socket import commandclient
 from . import shutdown
 from . import serializers
@@ -21,24 +21,24 @@ from . import utils
 logger = logging.getLogger("healthcheck.healthcheckclient")
 
 _permissions = {}
-async def can_edit(request):
+async def can_admin(request):
     host = request.headers.get("host")
     if any(host.startswith(k) for k in  ("localhost:","127.0.0.1:")):
         return settings.DEBUG
 
-    user = request.headers.get("X-emai")
+    user = request.headers.get("X-email")
     if not user:
-        return False
+        return True
     try:
-        perm = _permission.get(user)
+        perm = _permissions.get(user)
         now = utils.now()
         if not perm or (now - perm[1]).total_seconds() > settings.AUTH2_PERMCACHE_TIMEOUT:
             res = None
             async with httpx.AsyncClient(auth=(settings.AUTH2_USER,settings.AUTH2_PASSWORD),timeout=settings.AUTH2_TIMEOUT,verify=settings.AUTH2_SSLVERIFY) as client:
-                res = await client.post(self.servicehealthcheck.url,data={"details":"false","flaturl":"true","flatuser":"true","url":"https://{}/healthcheck/config".format(host),"user":user})
+                res = await client.post("{}/sso/checkauthorization".format(settings.AUTH2_URL),data={"details":"false","flaturl":"true","flatuser":"true","url":"https://{}/healthcheck/config".format(host),"user":user})
             data = res.json()
             perm = (data[-1],now)
-            _permission[user] = perm
+            _permissions[user] = perm
         return perm[0]
     except Exception as ex:
         logger.error("Failed to get the permission from auth2.{}: {}".format(ex.__class__.__name__,str(ex)))
@@ -63,7 +63,7 @@ async def post_shutdown():
 
 async def ping():
     start = utils.now()
-    nextcheck = start + timedelta(seconds = settings.HEARTBEAT_TIME) 
+    nextcheck = start + timedelta(seconds = settings.HEARTBEAT) 
     try:
         res = await commandclient.exec("healthcheck",0) 
         msg = res[1]
@@ -75,19 +75,110 @@ async def ping():
         end = utils.now()
     return "{}\n".format(json.dumps([["healthcheck","healthcheck"],[nextcheck,[start,end,status,msg,False ]]],cls=serializers.JSONFormater)).encode()
 
-@app.route("/healthcheck/dashboard")
-async def dashboard():
-    healthservice_nextcheck = utils.now() + timedelta(seconds=settings.HEARTBEAT_TIME + 1)
-    healthservice_nextcheck = int(healthservice_nextcheck.timestamp()) * 1000
-    editable = await can_edit(request)
-    return await render_template("healthcheck/dashboard.html",healthcheck=healthcheck,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck",editable=editable)
+@app.route("/healthcheck/ping")
+async def healthcheck_ping():
+    try:
+        res = await commandclient.exec("healthcheck",0) 
+        msg = res[1]
+        status = 200 if res[0] else 500
+    except Exception as ex:
+        status = 500
+        msg = "{}:{}".format(ex.__class__.__name__,str(ex))
+    return msg ,status
 
-@app.route("/healthcheck/healthstatusstream")
-async def healthstatusstream():
+@app.route("/healthcheck")
+@app.route("/healthcheck/")
+async def healthcheckindex():
+    user = request.headers.get("X-email")
+    if user:
+        defaultview = healthcheck.get_viewmeta(user)
+    else:
+        defaultview = {
+            "id":"Default",
+            "title": healthcheck.title,
+            "description":"The dashboard for all systems"
+        }
+
+    adminable = await can_admin(request)
+
+    return await render_template("healthcheck/index.html",systemviews=healthcheck.systemviews,can_admin=adminable,defaultview=defaultview)
+
+
+@app.route("/healthcheck/config/systemview",methods=["GET","POST"],defaults={'system':None})
+@app.route("/healthcheck/config/systemview/<system>",methods=["GET","POST"])
+async def save_systemview(system):
+    #permission check
+    editable = await can_admin(request)
+    if not editable:
+        return "Not Authorized", 403
+
+    if request.method == "GET":
+        if system:
+            viewmeta = healthcheck.get_viewmeta(system)
+        else:
+            viewmeta = SystemViewMeta(["","","",""])
+        return await render_template("healthcheck/systemview.html",viewmeta=viewmeta)
+    elif request.method == "POST":
+        formdata = await request.form
+        action = formdata.get("action","save")
+        if action == "save":
+            systemid = system or formdata.get("id")
+            title = formdata.get("title")
+            description = formdata.get("description")
+            messages = []
+            if not systemid :
+                messages.append("System Identity can't be empty")
+            if not title:
+                messages.append("Title can't be empty.")
+            if messages:
+                viewmeta = SystemViewMeta([systemid,title,description])
+                print("*****************************")
+                return await render_template("healthcheck/systemview.html",viewmeta=viewmeta,messages=messages,system=system)
+            healthcheck.save_systemview(systemid,title,description)
+
+            return redirect('/healthcheck')
+        elif action == "cancel":
+            return redirect("/healthcheck")
+        else:
+            raise Exception("Action({}) Not Support".format(action))
+
+@app.route("/healthcheck/config/systemview/<system>/delete",methods=["GET"])
+async def delete_systemview(system):
+    healthcheck.delete_systemview(system)
+    return redirect('/healthcheck')
+
+@app.route("/healthcheck/dashboard",defaults={'system': None})
+@app.route("/healthcheck/dashboard/<system>")
+async def dashboard(system):
+    healthservice_nextcheck = utils.now() + timedelta(seconds=settings.HEARTBEAT + 1)
+    healthservice_nextcheck = int(healthservice_nextcheck.timestamp()) * 1000
+    user = request.headers.get("X-email")
+    editable = await can_admin(request)
+    if system:
+        viewkey = system
+        statusstreamurl = "/healthcheck/healthstatusstream/{}".format(system)
+    else:
+        viewkey = user
+        statusstreamurl = "/healthcheck/healthstatusstream"
+
+    if viewkey:
+        healthcheckview = healthcheck.get_view(viewkey)
+    else:
+        healthcheckview = healthcheck
+
+
+    return await render_template("healthcheck/dashboard.html",healthcheck=healthcheckview,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck",statusstreamurl=statusstreamurl,editable=editable,heartbeat=settings.HEARTBEAT,user=user,system=system)
+
+@app.route("/healthcheck/healthstatusstream",defaults={'system': None})
+@app.route("/healthcheck/healthstatusstream/<system>")
+async def healthstatusstream(system):
+    viewkey = system or request.headers.get("X-email")
+    viewsettings = healthcheck.get_viewsettings(viewkey)
+
     @stream_with_context
     async def async_generator():
-        for section in healthcheck.sectionlist:
-            for service in section.servicelist:
+        for section in healthcheck.healthchecksections:
+            for service in section.healthcheckservices:
                 if service.healthstatus:
                     yield "{}\n".format(json.dumps([[section.sectionid,service.serviceid],service.healthstatus],cls=serializers.JSONFormater)).encode()
 
@@ -96,7 +187,7 @@ async def healthstatusstream():
         reader = healthstatuslistener.get_healthstatusreader()
         while not shutdown.shutdowning:
             try:
-                async with asyncio.timeout(settings.HEARTBEAT_TIME):
+                async with asyncio.timeout(settings.HEARTBEAT):
                     await healthstatuslistener.wait()
                     timeout = False
             except TimeoutError as ex:
@@ -108,10 +199,90 @@ async def healthstatusstream():
                 yield healthservicestatus
             else:
                 now = utils.now()
-                yield "{}\n".format(json.dumps([["healthcheck","healthcheck"],[now + timedelta(seconds=settings.HEARTBEAT_TIME),[now,now,"green","Tested by other service check.",False ]]],cls=serializers.JSONFormater)).encode()
+                yield "{}\n".format(json.dumps([["healthcheck","healthcheck"],[now + timedelta(seconds=settings.HEARTBEAT),[now,now,"green","Tested by other service check.",False ]]],cls=serializers.JSONFormater)).encode()
+
+    @stream_with_context
+    async def async_generator_view():
+        for section in healthcheck.healthchecksections:
+            serviceset = viewsettings.get(section.sectionid,set())
+            for service in section.healthcheckservices:
+                if service.healthstatus and service.serviceid in serviceset:
+                    yield "{}\n".format(json.dumps([[section.sectionid,service.serviceid],service.healthstatus],cls=serializers.JSONFormater)).encode()
+
+        servicestatus = await ping()
+        yield servicestatus
+        reader = healthstatuslistener.get_healthstatusreader()
+        while not shutdown.shutdowning:
+            try:
+                async with asyncio.timeout(settings.HEARTBEAT):
+                    await healthstatuslistener.wait()
+                    timeout = False
+            except TimeoutError as ex:
+                timeout = True
+            for healthstatus in reader.items():
+                if healthstatus[0][1] in viewsettings.get(healthstatus[0][0],set()):
+                    yield "{}\n".format(json.dumps(healthstatus,cls=serializers.JSONFormater)).encode()
+            if timeout:
+                healthservicestatus = await ping()
+                yield healthservicestatus
+            else:
+                now = utils.now()
+                yield "{}\n".format(json.dumps([["healthcheck","healthcheck"],[now + timedelta(seconds=settings.HEARTBEAT),[now,now,"green","Tested by other service check.",False ]]],cls=serializers.JSONFormater)).encode()
 
 
-    return async_generator(), 200, None
+    return async_generator_view() if viewsettings else async_generator(), 200, None
+
+@app.route("/healthcheck/customize",defaults={'system': None},methods=["GET","POST"])
+@app.route("/healthcheck/config/view/<system>",methods=["GET","POST"])
+async def customize_dashboard(system):
+    #permission check
+    if system:
+        editable = await can_admin(request)
+        if not editable:
+            return "Not Authorized", 403
+
+
+    user = request.headers.get("X-email")
+    viewkey = system or user
+    if request.method == "GET":
+        healthcheckview = healthcheck.get_view(viewkey)
+
+        return await render_template("healthcheck/customize.html",healthcheck=healthcheckview,viewkey=viewkey,system=system,user=user)
+    else:
+        try:
+            formdata = await request.form
+            action = formdata.get("action","save")
+            if action == "save":
+                all_selected = True
+                viewsettings = {}
+
+                for section in healthcheck.healthchecksections:
+                    for service in section.healthcheckservices:
+                        if "{}:{}".format(section.sectionid,service.serviceid) in formdata:
+                            if section.sectionid not in viewsettings:
+                                viewsettings[section.sectionid] = set()
+                            viewsettings[section.sectionid].add(service.serviceid)
+                        else:
+                            all_selected = False
+
+                if all_selected or not viewsettings:
+                    healthcheck.save_viewsettings(viewkey)
+                else:
+                    healthcheck.save_viewsettings(viewkey,viewsettings)
+            elif action == "reset":
+                healthcheck.save_viewsettings(viewkey)
+            else:
+                raise Exception("Action({}) Not Support".format(action))
+
+            msg = None
+        except Exception as ex:
+            traceback.print_exc()
+            msg = str(ex)
+        if user:
+            return redirect("/healthcheck/dashboard/{}".format(system))
+        else:
+            return redirect("/healthcheck/dashboard")
+
 
 @app.route("/healthcheck/history/<sectionid>/<serviceid>",defaults={'pageid': ""})
 @app.route("/healthcheck/history/<sectionid>/<serviceid>/<pageid>")
@@ -174,7 +345,7 @@ async def healthcheckdetails(sectionid,serviceid,pageid,starttime):
 
 @app.route("/healthcheck/config/edit",methods=["GET","POST"])
 async def edit_healthcheck():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -209,7 +380,7 @@ async def edit_healthcheck():
 
 @app.route("/healthcheck/config/publish",methods=["GET","POST"])
 async def publish_healthcheck():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -244,7 +415,7 @@ async def publish_healthcheck():
 
 @app.route("/healthcheck/config/publishhistories",methods=["GET"])
 async def publishhistories():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -252,7 +423,7 @@ async def publishhistories():
 
 @app.route("/healthcheck/config/rollback",methods=["POST"])
 async def rollback():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -277,7 +448,7 @@ async def rollback():
 
 @app.route("/healthcheck/config/preview",methods=["GET"])
 async def preview_editing_healthcheck():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -291,14 +462,14 @@ async def preview_editing_healthcheck():
         traceback.print_exc()
         msg = str(ex)
 
-    healthservice_nextcheck = utils.now() + timedelta(seconds=settings.HEARTBEAT_TIME + 1)
+    healthservice_nextcheck = utils.now() + timedelta(seconds=settings.HEARTBEAT + 1)
     healthservice_nextcheck = int(healthservice_nextcheck.timestamp()) * 1000
-    return await render_template("healthcheck/preview.html",healthcheck=healthcheck.editing_healthcheck,message=msg,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck/config")
+    return await render_template("healthcheck/preview.html",healthcheck=healthcheck.editing_healthcheck,message=msg,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck/config",statusstreamurl="/healthcheck/config/healthstatusstream",heartbeat=settings.HEARTBEAT)
 
 @app.route("/healthcheck/config/history/<sectionid>/<serviceid>",defaults={'pageid': ""})
 @app.route("/healthcheck/config/history/<sectionid>/<serviceid>/<pageid>")
 async def editinghealthcheckhistory(sectionid,serviceid,pageid):
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -324,7 +495,7 @@ async def editinghealthcheckhistory(sectionid,serviceid,pageid):
 
 @app.route("/healthcheck/config/details/<sectionid>/<serviceid>/<pageid>/<starttime>")
 async def editinghealthcheckdetails(sectionid,serviceid,pageid,starttime):
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -364,7 +535,7 @@ async def editinghealthcheckdetails(sectionid,serviceid,pageid,starttime):
 
 @app.route("/healthcheck/config/preview/start",methods=["GET"])
 async def start_preview_editing_healthcheck():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -381,7 +552,7 @@ async def start_preview_editing_healthcheck():
 
 @app.route("/healthcheck/config/preview/stop",methods=["GET"])
 async def stop_preview_editing_healthcheck():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
@@ -397,16 +568,23 @@ async def stop_preview_editing_healthcheck():
         return Response(msg,status="400")
 
 
+@app.route("/healthcheck/json",defaults={'system': None})
+@app.route("/healthcheck/json/<system>")
+def jsonstatus(system):
+    viewkey = system or request.headers.get("X-email")
+    details = request.args.get("details") or ""
+    return healthcheck.get_view(viewkey).get_jsonstatus(details.lower() == "true"),200,{"Content-Type":"application/json"}
+
 @app.route("/healthcheck/config/healthstatusstream")
 async def editinghealthstatusstream():
-    editable = await can_edit(request)
+    editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
     @stream_with_context
     async def async_generator():
-        for section in healthcheck.editing_healthcheck.sectionlist:
-            for service in section.servicelist:
+        for section in healthcheck.editing_healthcheck.healthchecksections:
+            for service in section.healthcheckservices:
                 yield "{}\n".format(json.dumps([[section.sectionid,service.serviceid],service.healthstatus],cls=serializers.JSONFormater)).encode()
 
         servicestatus = await ping()
@@ -414,7 +592,7 @@ async def editinghealthstatusstream():
         reader = editinghealthstatuslistener.get_healthstatusreader()
         while not shutdown.shutdowning:
             try:
-                async with asyncio.timeout(settings.HEARTBEAT_TIME):
+                async with asyncio.timeout(settings.HEARTBEAT):
                     await editinghealthstatuslistener.wait()
                     timeout = False
             except TimeoutError as ex:
@@ -427,7 +605,7 @@ async def editinghealthstatusstream():
                 yield healthservicestatus
             else:
                 now = utils.now()
-                yield "{}\n".format(json.dumps([["healthcheck","healthcheck"],[now + timedelta(seconds=settings.HEARTBEAT_TIME),[now,now,"green","Tested by other service check.",False ]]],cls=serializers.JSONFormater)).encode()
+                yield "{}\n".format(json.dumps([["healthcheck","healthcheck"],[now + timedelta(seconds=settings.HEARTBEAT),[now,now,"green","Tested by other service check.",False ]]],cls=serializers.JSONFormater)).encode()
 
 
     return async_generator(), 200, None

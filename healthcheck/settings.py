@@ -8,16 +8,16 @@ HEALTHCHECK_DATA_DIR = os.environ.get("HEALTHCHECK_DATA_DIR",os.path.join(HOME_D
 if not os.path.exists(HEALTHCHECK_DATA_DIR):
     os.makedirs(HEALTHCHECK_DATA_DIR)
 
-DEBUG = os.environ.get("DEBUG","true").lower() == "true"
+DEBUG = os.environ.get("DEBUG","false").lower() == "true"
 
 TZ = ZoneInfo(os.environ.get("TZ", "Australia/Perth"))  
 
 try:
-    HEARTBEAT_TIME = int(os.environ.get("HEARTBEAT_TIME"),10)
-    if HEARTBEAT_TIME <=0 :
-        HEARTBEAT_TIME = 10
+    HEARTBEAT = int(os.environ.get("HEARTBEAT"),10)
+    if HEARTBEAT <=0 :
+        HEARTBEAT = 10
 except:
-    HEARTBEAT_TIME = 10
+    HEARTBEAT = 10
 
 
 NEXTCHECK_TIMEOUT = int(os.environ.get("NEXTCHECK_TIMEOUT",30)) * 1000 #configured in seconds, tranform it to milliseconds
@@ -25,7 +25,7 @@ NEXTCHECK_CHECKINTERVAL = int(os.environ.get("NEXTCHECK_CHECKINTERVAL",10)) * 10
 
 BLOCK_TIMEOUT = int(os.environ.get("BLOCK_TIMEOUT",5)) # in seconds, 
 SOCKET_ATTEMPTS = int(os.environ.get("SOCKET_ATTEMPTS",3))
-HEALTHCHECKSERVER_LOCAL = os.environ.get("HEALTHCHECKSERVER_LOCAL","true").lower() == "true"
+HEALTHCHECKSERVER_HOST = os.environ.get("HEALTHCHECKSERVER_HOST","localhost")
 HEALTHCHECKSERVER_PORT = int(os.environ.get("HEALTHCHECKSERVER_PORT",9080))
 
 HEALTHCHECK_CONFIGFILE = os.path.join(HEALTHCHECK_DATA_DIR,os.environ.get("HEALTHCHECK_CONFIGFILE","healthcheck.json"))
@@ -50,13 +50,6 @@ AUTH2_PERMCACHE_TIMEOUT = int(os.environ.get("AUTH2_PERMCACHE_TIMEOUT",300))  # 
 HEALTHCHECK_PUBLISH_HISTORIES = int(os.environ.get("HEALTHCHECK_PUBLISH_HISTORIES",100))
 
 ASYNCIO_EVENTS = int(os.environ.get("ASYNCIO_EVENTS",10))
-
-try:
-    HEALTHCHECK_WORKERS = os.environ.get("HEALTHCHECK_WORKERS",4)
-except:
-    HEALTHCHECK_WORKERS = 4
-
-PORT = int(os.environ.get("PORT",9080))
 
 logging.config.dictConfig({
     'version': 1,

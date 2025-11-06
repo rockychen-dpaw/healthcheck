@@ -1,0 +1,47 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+      <title>Configure Healthcheck Dashboard View for {{viewkey}}</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="DBCA Spatial Support System health checks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <style>
+        {% include 'healthcheck/inc/healthcheck.css' %}
+    </style>
+  </head>
+  <body>
+      <h3>Configure Healthcheck Dashboard View for {{viewkey}}</h3>
+      {% if system %}
+      <form action="/healthcheck/config/view/{{system}}" method="POST">
+      {% else %}
+      <form action="/healthcheck/customize" method="POST">
+      {% endif %}
+
+      <button type="submit" name="action" value="save">Save</button>
+      <button type="submit" name="action" value="reset">Reset</button>
+      <table class="customizeblock">
+      {% for section in healthcheck.selectablehealthchecksections %}
+          <tr class="customizesectionnamerow"><td class="sectionnamecolumn"><span class="sectionname">{{section.name}}</span></td></tr>
+          <tr class="customizesectionrow"><td class="customizesectioncolumn">
+          {% for service in section.selectablehealthcheckservices %}
+          <div class="customizeserviceselect">
+              <div class="customizeservicename">{{service.name}}</div>
+              <div class="customizeselect">
+                  {% if service.selected %}
+                  <input type="checkbox" name="{{section.sectionid}}:{{service.serviceid}}" checked/>
+                  {% else %}
+                  <input type="checkbox" name="{{section.sectionid}}:{{service.serviceid}}" />
+                  {% endif %}
+              </div>
+          </div>
+          {% endfor %}
+          </td></tr>
+      {% endfor %}
+      </table>
+      </form>
+
+  </body>
+</html>

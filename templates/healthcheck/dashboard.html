@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>DBCA Spatial Support System health checks</title>
+    <title>{{healthcheck.title}}</title>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="description" content="DBCA Spatial Support System health checks" />
@@ -12,11 +12,18 @@
     </style>
   </head>
   <body>
-      <h3>DBCA Spatial Support System health checks 
+      <h3><A href="/healthcheck">Home</A> > {{healthcheck.title}} 
       {% if editable %}
       <br>
       <A target="Edit health check configuration" href="/healthcheck/config/edit">Edit</A> | 
-      <A target="Edit health check configuration" href="/healthcheck/config/publishhistories">Publish Histories</A>
+      <A target="Edit health check configuration" href="/healthcheck/config/publishhistories">Publish Histories</A> | 
+      {% if system %}
+      <A href="/healthcheck/config/view/{{system}}">Setting</A> 
+      {% else %}
+      <A href="/healthcheck/customize">Customize</A> 
+      {% endif %}
+      {% elif user %}
+      <A href="/healthcheck/customize">Customize</A> 
       {% endif %}
       </h3>
 

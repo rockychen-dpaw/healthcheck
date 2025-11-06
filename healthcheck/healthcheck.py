@@ -106,7 +106,7 @@ class SectionHealthCheck(UserDict):
         return self["id"]
 
     @property
-    def servicelist(self):
+    def healthcheckservices(self):
         return self["services"].values()
 
 class HealthCheckStatus(object):
@@ -482,6 +482,7 @@ class HealthCheckPages(object):
                         f.write(self._pages[i].serialize().encode())
 
 class ServiceHealthCheck(UserDict):
+    selected = False
     def __init__(self,healthcheck,data):
         super().__init__(data)
         self.healthcheck = healthcheck
@@ -555,7 +556,7 @@ class ServiceHealthCheck(UserDict):
     @property
     def healthstatus_nextcheck(self):
         status = self.healthstatus
-        return status[0].strftime("%Y-%m-%d %H:%M:%S") if status else ""
+        return status[0].strftime("%Y-%m-%dT%H:%M:%S") if status else ""
 
     @property
     def healthstatus_name(self):
@@ -573,36 +574,14 @@ class ServiceHealthCheck(UserDict):
         return status[1][4] if status and status[1] else ""
 
     @property
-    def healthstatus_message(self):
-        status = self.healthstatus
-        if not status or not status[1]:
-            return ""
-
-        return """Health Status : {}
-Check Start Time : {}
-Check End Time : {}
-Health Status Message : {}
-Next Check Time : {}
-""".format(self.healthstatus_name,
-           self.healthstatus_checkstart,
-           self.healthstatus_checkend,
-           self.healthstatus_info,
-           self.healthstatus_nextcheck
-    )
-
-    @property
-    def healthstatus_alertmessage(self):
-        return self.healthstatus_message.replace("\n","\\n")
-        
-    @property
     def healthstatus_checkstart(self):
         status = self.healthstatus
-        return status[1][0].strftime("%Y-%m-%d %H:%M:%S.%f") if status and status[1] else ""
+        return status[1][0].strftime("%Y-%m-%dT%H:%M:%S.%f") if status and status[1] else ""
 
     @property
     def healthstatus_checkend(self):
         status = self.healthstatus
-        return status[1][1].strftime("%Y-%m-%d %H:%M:%S.%f") if status and status[1] else ""
+        return status[1][1].strftime("%Y-%m-%dT%H:%M:%S.%f") if status and status[1] else ""
 
     @property
     def historyexpire(self):
@@ -690,7 +669,26 @@ Next Check Time : {}
         else:
             self["healthstatus"] = [next_checktime,last_healthcheck] 
 
-class HealthCheck(object):
+class JsonStatusMixin(object):
+    def get_jsonstatus(self,details=False):
+        data = {}
+        for section in self.healthchecksections:
+            sectiondata = {}
+            data[section.sectionid] = sectiondata
+            for service in section.healthcheckservices:
+                if details:
+                    sectiondata[service.serviceid] = {
+                        'status': service.healthstatus_name,
+                        'starttime': service.healthstatus_checkstart,
+                        'endtime': service.healthstatus_checkend,
+                        'message':service.healthstatus_info,
+                        'nextcheck':service.healthstatus_nextcheck
+                    }
+                else:
+                    sectiondata[service.serviceid] = service.healthstatus_name
+        return data
+
+class HealthCheck(JsonStatusMixin):
     configfile = None
     _checkingstatus_loaded = False
     def __init__(self,configfile=settings.HEALTHCHECK_CONFIGFILE):
@@ -707,9 +705,12 @@ class HealthCheck(object):
     def __str__(self):
         return self._name
 
+    @property
+    def title(self):
+        return "DBCA Essential Systems Health Check"
 
     @property
-    def sectionlist(self):
+    def healthchecksections(self):
         return self.sections.values() if self.sections else []
 
     def get_service(self,section,service):
@@ -728,8 +729,8 @@ class HealthCheck(object):
         today = datetime(year = now.year,month=now.month,day=now.day).astimezone(settings.TZ)
         tomorrow = today + timedelta(days=1)
         seconds_in_day = int((now - today).total_seconds())
-        for section in self.sectionlist:
-            for service in section.servicelist:
+        for section in self.healthchecksections:
+            for service in section.healthcheckservices:
                 existing_service = sections.get(section.sectionid,{}).get("services",{}).get(service.serviceid)
                 next_checktime = today + timedelta(seconds=seconds_in_day - (seconds_in_day % service.interval))
                 if existing_service and existing_service.healthstatus:
@@ -756,7 +757,8 @@ class HealthCheck(object):
         if not self.configfile:
             raise Exception("The configuration is not loaded from a json file, no need to load")
         if not os.path.exists(self.configfile):
-            raise Exception("The config file({}) doesn't exist".format(self.configfile))
+            with open(self.configfile,'w') as f:
+                f.write("{}")
         try:
             logger.debug("Begin to load health check configurations({})".format(self.configfile))
             with open(self.configfile,'rb') as f:
@@ -792,7 +794,7 @@ class HealthCheck(object):
         tomorrow = today + timedelta(days=1)
         seconds_in_day = int((now - today).total_seconds())
         if not configs:
-            return {}
+            return ({},[])
         
         if not isinstance(configs,(list,tuple)):
             raise Exception("Healthcheck configurations should be a list object.{}".format(configs))
@@ -1132,17 +1134,16 @@ class HealthCheck(object):
             #already stopped
             return
 
-        if self._next_runtime:
-            seconds = (self._next_runtime - utils.now()).total_seconds()
-            if seconds > 0:
-                logger.debug("Waiting {} seconds to begin the next batch of service health check.".format(seconds))
-                self._continous_check_task = asyncio.get_running_loop().call_later(seconds,self._schedule_continuous_check,taskcls,*args)
-                shutdown.register_scheduled_task(self._continuous_check_task)
-            else:
-                self._continuous_check_task = asyncio.create_task(self._continuous_check(taskcls,*args))
+        if not self._next_runtime:
+            self._next_runtime = now + timedelta(seconds=30)
+
+        seconds = (self._next_runtime - utils.now()).total_seconds()
+        if seconds > 0:
+            logger.debug("Waiting {} seconds to begin the next batch of service health check.".format(seconds))
+            self._continous_check_task = asyncio.get_running_loop().call_later(seconds,self._schedule_continuous_check,taskcls,*args)
+            shutdown.register_scheduled_task(self._continuous_check_task)
         else:
-            logger.info("The continuous health checking is end.")
-            self._continuous_check_task = None
+            self._continuous_check_task = asyncio.create_task(self._continuous_check(taskcls,*args))
 
     @property
     def is_continuous_check_started(self):
@@ -1215,6 +1216,7 @@ class EditingHealthCheck(HealthCheck):
         super().__init__(configfile=configfile)
         self.healthcheck = healthcheck
         self._lock = FileLock("{}.lock".format(self.configfile))
+        self.load_checkingstatus()
         
 
     def reset(self):
@@ -1291,11 +1293,11 @@ class EditingHealthCheck(HealthCheck):
     
             #update the publish history
             count = 0
-            tmpfile = "{}.tmp".format(self.healthcheck.publishhistoriesfile)
+            tmpfile = "{}.tmp".format(self.healthcheck.publishhistoryfile)
             with open(tmpfile,'w') as fw:
                 count += 1
                 fw.write(json.dumps([now.strftime("%Y-%m-%d %H:%M:%S"),os.path.basename(publishedfile),user,comments]))
-                with open(self.healthcheck.publishhistoriesfile,'r') as fr:
+                with open(self.healthcheck.publishhistoryfile,'r') as fr:
                     while True:
                         line = fr.readline()
                         if not line:
@@ -1311,15 +1313,132 @@ class EditingHealthCheck(HealthCheck):
                                 publisheddata = json.loads(line.strip())
                                 if publisheddata[1]:
                                     utils.remove_file(os.path.join(self.healthcheck.publishhistorydir,publisheddata[1]))
-            os.rename(tmpfile,self.healthcheck.publishhistoriesfile)
+            os.rename(tmpfile,self.healthcheck.publishhistoryfile)
     
             #update the current healthceck config file
             os.rename(self.configfile,self.healthcheck.configfile)
     
             return True
 
+class SystemViewMeta(list):
+    @property
+    def id(self):
+        return self[0]
+
+    @id.setter
+    def id(self,v):
+        self[0] = v
+
+
+    @property
+    def title(self):
+        return self[1]
+
+    @title.setter
+    def title(self,v):
+        self[1] = v
+
+    @property
+    def description(self):
+        return self[2]
+
+    @description.setter
+    def description(self,v):
+        self[2] = v
+
+class UserViewMeta(object):
+    def __init__(self,user,healthcheck):
+        self._user = user
+        self._healthcheck = healthcheck
+
+    def __str__(self):
+        return self._user
+
+    @property
+    def title(self):
+        return "Systems Health Check -- {}".format(self._user)
+
+    @property
+    def description(self):
+        return "The view contains only user interested systems"
+
+class SelectableServiceHealthCheck(object):
+    def __init__(self,servicehealthcheck,selected):
+        self._servicehealthcheck = servicehealthcheck
+        self.selected = selected
+
+    def __getattr__(self,name):
+        return getattr(self._servicehealthcheck,name)
+
+    def __getitem__(self,name):
+        return self._servicehealthcheck.get(name)
+
+
+class SectionHealthCheckView(object):
+    def __init__(self,sectionhealthcheck,viewsettings):
+        self._sectionhealthcheck = sectionhealthcheck
+        self._viewsettings = viewsettings
+
+    def __getattr__(self,name):
+        return getattr(self._sectionhealthcheck,name)
+
+    def __getitem__(self,name):
+        return self._sectionhealthcheck.get(name)
+
+    @property
+    def healthcheckservices(self):
+        if self._viewsettings is not None and not self._viewsettings:
+            return []
+        return filter(lambda service: self._viewsettings is None or service.serviceid in self._viewsettings, self._sectionhealthcheck.healthcheckservices)
+
+    @property
+    def selectablehealthcheckservices(self):
+        return map(lambda service: SelectableServiceHealthCheck(service,self._viewsettings is not None and service.serviceid in self._viewsettings),self._sectionhealthcheck.healthcheckservices)
+
+class HealthCheckView(JsonStatusMixin):
+    def __init__(self,healthcheck,viewmeta,viewsettings):
+        self._healthcheck = healthcheck
+        self._viewmeta = viewmeta
+        self._viewsettings = viewsettings
+
+    @property
+    def title(self):
+        return self._viewmeta.title
+
+    @property
+    def healthchecksections(self):
+        if not self._viewsettings:
+            return self._healthcheck.healthchecksections
+        return map(lambda section: SectionHealthCheckView(section,self._viewsettings.get(section.sectionid,set()) if self._viewsettings else None ), filter(lambda section: section.sectionid in self._viewsettings, self._healthcheck.healthchecksections))
+
+    @property
+    def selectablehealthchecksections(self):
+        return map(lambda section: SectionHealthCheckView(section,self._viewsettings.get(section.sectionid,set()) if self._viewsettings else None ), self._healthcheck.healthchecksections)
+
+    def get_jsonstatus(self,details=False):
+        data = {}
+        for section in self.healthchecksections:
+            sectiondata = {}
+            data[section.sectionid] = sectiondata
+            for service in section.healthcheckservices:
+                if details:
+                    sectiondata[service.serviceid] = {
+                        'status': service.healthstatus_name,
+                        'starttime': service.healthstatus_checkstart,
+                        'endtime': service.healthstatus_checkend,
+                        'message':service.healthstatus_info,
+                        'nextcheck':service.healthstatus_nextcheck
+                    }
+                else:
+                    sectiondata[service.serviceid] = service.healthstatus_name
+        return data
+
 class ReleasedHealthCheck(HealthCheck):
 
+    def __init__(self):
+        super().__init__(configfile=settings.HEALTHCHECK_CONFIGFILE)
+        self._views = {}
+        
 
     _editconfigdir = None
     @property
@@ -1360,23 +1479,27 @@ class ReleasedHealthCheck(HealthCheck):
             self._publishhistorydir = folder
         return self._publishhistorydir
 
-    _publishhistoriesfile = None
+    _publishhistoryfile = None
     @property
-    def publishhistoriesfile(self):
-        if not self._publishhistoriesfile:
+    def publishhistoryfile(self):
+        if not self._publishhistoryfile:
             tmpfile = os.path.join(self.publishhistorydir,"publishhistories.json")
             if not os.path.exists(tmpfile):
                 configfilename = os.path.basename(self.configfile)
                 configfilebase,configfileext = os.path.splitext(configfilename)
                 initialfile = os.path.join(self.publishhistorydir,"{}.initial{}".format(configfilebase,configfileext))
-                shutil.copyfile(self.configfile,initialfile)
-                with open(tmpfile,'w') as f:
-                    f.write(json.dumps(["Initial",os.path.basename(initialfile),"","Initial"]))
+                if self.sections:
+                    shutil.copyfile(self.configfile,initialfile)
+                    with open(tmpfile,'w') as f:
+                        f.write(json.dumps(["Initial",os.path.basename(initialfile),"","Initial"]))
+                else:
+                    with open(tmpfile,'w') as f:
+                        pass
             elif not os.path.isfile(tmpfile):
                 raise Exception("The publish history file({}) is not a file".format(tmpfile))
-            self._publishhistoriesfile = tmpfile
+            self._publishhistoryfile = tmpfile
 
-        return self._publishhistoriesfile
+        return self._publishhistoryfile
 
     _editing_healthcheck = None
     @property
@@ -1390,7 +1513,7 @@ class ReleasedHealthCheck(HealthCheck):
     @property
     def publishhistories(self):
         histories = []
-        with open(self.publishhistoriesfile,'r') as fr:
+        with open(self.publishhistoryfile,'r') as fr:
             while True:
                 line = fr.readline()
                 if not line:
@@ -1419,7 +1542,267 @@ class ReleasedHealthCheck(HealthCheck):
         shutil.copyfile(configfile,self.configfile)
         return True
 
+    _systemviewsdir = None
+    @property 
+    def systemviewsdir(self):
+        if not self._systemviewsdir:
+            configdir,filename = os.path.split(self.configfile)
+            basename = os.path.splitext(filename)[0]
+            d = os.path.join(configdir,"{}.views".format(basename),"system")
+            if not os.path.exists(d):
+                utils.makedir(d)
+            elif not os.path.isdir(d):
+                raise Exception("The path({}) is not a folder".format(d))
+            self._systemviewsdir = d
 
+        return self._systemviewsdir
+
+    _userviewsdir = None
+    @property 
+    def userviewsdir(self):
+        if not self._userviewsdir:
+            configdir,filename = os.path.split(self.configfile)
+            basename = os.path.splitext(filename)[0]
+            d = os.path.join(configdir,"{}.views".format(basename),"user")
+            if not os.path.exists(d):
+                utils.makedir(d)
+            elif not os.path.isdir(d):
+                raise Exception("The path({}) is not a folder".format(d))
+            self._userviewsdir = d
+
+        return self._userviewsdir
+
+    def get_viewdir(self,key):
+        if "@" in key:
+            #key is a user
+            return self.userviewsdir
+        else:
+            #key is a system
+            return self.systemviewsdir
+
+    _viewsfile = None
+    @property
+    def systemviewsfile(self):
+        if not self._viewsfile:
+            self._viewsfile = os.path.join(self.systemviewsdir,"systemviews.json")
+        return self._viewsfile
+
+    _systemviews = [None,None,None]
+    @property 
+    def systemviews(self):
+        if not os.path.exists(self.systemviewsfile):
+            self._systemviews = [None,None,None]
+            return []
+
+        file_size = os.path.getsize(self.systemviewsfile)
+        if not file_size:
+            utils.remove_file(self.systemviewsfile)
+            self._systemviews = [None,None,None]
+            return []
+
+        file_mtime = os.path.getmtime(self.systemviewsfile)
+        if self._systemviews[0] != file_mtime  or self._systemviews[1] != file_size:
+            systemviews = []
+            with open(self.systemviewsfile,'r') as f:
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        systemviews.append(SystemViewMeta(json.loads(line)))
+                    except Exception as ex :
+                        logger.error("{}: Failed to parse the system view({})".format(self,line))
+
+            if not systemviews:
+                #no system views
+                utils.remove_file(self.systemviewsfile)
+                self._systemviews = [None,None,None]
+                return []
+            self._systemviews[0] = file_mtime
+            self._systemviews[1] = file_size
+            self._systemviews[2] = systemviews
+
+
+        return self._systemviews[2]
+
+    def get_viewsettings(self,key):
+        """
+        Return None if no customization, otherwise return {section:service set}
+        """
+        if not key:
+            return None
+        viewfile = os.path.join(self.get_viewdir(key),"{}.json".format(key))
+
+        if not os.path.exists(viewfile):
+            if key in self._views:
+                del self._views[key]
+            return None
+        
+        file_size = os.path.getsize(viewfile)
+        file_mtime = os.path.getmtime(viewfile)
+        if not file_size:
+            #no customization
+            utils.remove_file(viewfile)
+            if key in self._views:
+                del self._views[key]
+            return None
+
+        if key not in self._views or self._views[key][0] != file_mtime or self._views[key][1] != file_size:
+            #file changed, reload the file
+            with open(viewfile) as f:
+                data = f.read()
+            viewsettings = json.loads(data)
+            #turn the service list to service set
+            #remove the empty secion
+            for key in [k for k in viewsettings.keys()]:
+                viewsettings[key] = set(viewsettings[key])
+                if not viewsettings[key]:
+                    del viewsettings[key]
+            if viewsettings:
+                self._views[key] = [file_mtime,file_size,viewsettings]
+            else:
+                #no customization
+                utils.remove_file(viewfile)
+                if key in self._views:
+                    del self._views[key]
+                return None
+
+
+        return self._views[key][2]
+
+    def save_systemview(self,viewid,title,description):
+        systemviews = self.systemviews
+        systemview = next((v for v in systemviews if v.id == viewid),None)
+        if systemview:
+            if systemview.title != title or systemview.description != description:
+                #changed
+                systemview.title = title
+                systemview.description = description
+                firstline = True
+                with open(self.systemviewsfile,'wb') as f:
+                    for view in systemviews:
+                        if not firstline:
+                            f.write(b'\n')
+                        else:
+                            firstline = False
+                        f.write(json.dumps(view).encode())
+
+                
+                self._systemviews[0] = os.path.getmtime(self.systemviewsfile)
+                self._systemviews[1] = os.path.getsize(self.systemviewsfile)
+                logger.debug("{}: Update the system views file({})".format(self,self.systemviewsfile))
+        else:
+            systemview = SystemViewMeta([viewid,title,description])
+            with open(self.systemviewsfile,'ab') as f:
+                if len(systemviews) > 0:
+                    f.write(b'\n')
+                f.write(json.dumps(systemview).encode())
+
+            systemviews.append(systemview)
+            self._systemviews[0] = os.path.getmtime(self.systemviewsfile)
+            self._systemviews[1] = os.path.getsize(self.systemviewsfile)
+            logger.debug("{}: Append the system views file({})".format(self,self.systemviewsfile))
+
+    def delete_systemview(self,viewid):
+        systemviews = self.systemviews
+        pos = next((i for i in range(len(systemviews)) if systemviews[i].id == viewid),-1)
+        if pos == -1:
+            return
+        systemview = systemviews[pos]
+        #remove system view settings in memory and delte setting file
+        self.save_viewsettings(systemview.id)
+
+        #delete from systemviews
+        del systemviews[pos]
+        firstline = True
+        with open(self.systemviewsfile,'wb') as f:
+            for view in systemviews:
+                if not firstline:
+                    f.write(b'\n')
+                else:
+                    firstline = False
+                f.write(json.dumps(view).encode())
+        self._systemviews[0] = os.path.getmtime(self.systemviewsfile)
+        self._systemviews[1] = os.path.getsize(self.systemviewsfile)
+
+
+    def save_viewsettings(self,key,viewsettings=None):
+        #remove duplicate service, remove empty section
+        viewfile = os.path.join(self.get_viewdir(key),"{}.json".format(key))
+        if not viewsettings:
+            #no customization
+            utils.remove_file(viewfile)
+            if key in self._views:
+                del self._views[key]
+            return
+
+        for key in [k for k in viewsettings.keys()]:
+            if not isinstance(viewsettings[key],set):
+                viewsettings[key] = set(viewsettings[key])
+            if not viewsettings[key]:
+                del viewsettings[key]
+        
+        if not viewsettings:
+            #no customization
+            utils.remove_file(viewfile)
+            if key in self._views:
+                del self._views[key]
+            return
+
+        customized = False
+        for section in self.healthchecksections:
+            if section.sectionid not in viewsettings:
+                customized = True
+                break
+            if len(section["services"]) != len(viewsettings[section.sectionid]):
+                customized = True
+                break
+
+        if not customized:
+            #not customized
+            util.remove_file(viewfile)
+            if key in self._views:
+                del self._views[key]
+            return
+
+        if key in self._views and self._views[key][2] == viewsettings:
+            return
+
+        #change the service set to service list
+        for key in viewsettings.keys():
+            viewsettings[key] = list(viewsettings[key])
+
+        with open(viewfile,'w') as f:
+            f.write(json.dumps(viewsettings,indent=4))
+
+        #change the service list back to service set
+        for key in viewsettings.keys():
+            viewsettings[key] = set(viewsettings[key])
+
+        if key in self._views:
+            self._views[key][0] = os.path.getmtime(viewfile)
+            self._views[key][1] = os.path.getsize(viewfile)
+            self._views[key][2] = viewsettings
+        else:
+            self._views[key] = [os.path.getmtime(viewfile),os.path.getsize(viewfile),viewsettings]
+
+        logger.debug("{}: Changed the settings for view({})".format(self,key))
+
+    def get_viewmeta(self,key):
+        if "@" in key:
+            return UserViewMeta(key,self)
+        else:
+            return next((v for v in self.systemviews if v.id == key),SystemViewMeta([key,self.title,"Not Configured"]))
+
+    def get_view(self,key):
+        if not key:
+            return self
+        viewmeta = self.get_viewmeta(key)
+        viewsettings = self.get_viewsettings(key)
+        return HealthCheckView(self,viewmeta,viewsettings)
 
 healthcheck = ReleasedHealthCheck()
 

@@ -87,3 +87,48 @@ body {
     width:32px;
     height:32px;
 }
+
+.customizeblock {
+    width: 90%
+}
+.customizesectionrow {
+
+}
+.customizesectionnamerow {
+
+}
+.customizesectioncolumn {
+
+}
+.customizeserviceselect {
+    display: inline-block;
+    height: 60px;
+    background-color: bisque;
+
+}
+.customizesectionname {
+    display:block;
+    background-color: grey;
+    text-align: center;
+    font-weight: bold;
+    vertical-align: middle;
+}
+.customizeservicename {
+    width: 350px;
+    height: 60px;
+    display: inline-block;
+    text-wrap: wrap;
+    text-align: right;
+    font-weight: bold;
+    vertical-align: -22px;
+}
+
+
+.customizeselect {
+    width: 40px;
+    display: inline-block;
+    padding-left: 10px;
+    text-align: center;
+    height:60px;
+    vertical-align: -22px;
+}

@@ -126,7 +126,7 @@ class CommandConnection(CommandsMixin,Connection):
 port_in_use_re = re.compile("Errno\\s+98",re.IGNORECASE)
 class SocketServer(object):
     def __init__(self,f_get_connection_cls = lambda conn_type:None):
-        self.host = "127.0.0.1" if settings.HEALTHCHECKSERVER_LOCAL else "0.0.0.0"
+        self.host = "0.0.0.0"
         self.port = settings.HEALTHCHECKSERVER_PORT
         self.name = "Socket Server({}:{})".format(self.host,self.port)
         self.connections = set()
@@ -189,7 +189,13 @@ class SocketServer(object):
 
 
     async def start(self):
-        await asyncio.start_server(self._create_connection,host = self.host,port = self.port)
+        while True:
+            try:
+                await asyncio.start_server(self._create_connection,host = self.host,port = self.port)
+                break
+            except OSError as ex:
+                logger.error("Failed to start socket server, wait 5 seconds and try again.{}: {}".format(ex.__class__.__name__,str(ex)))
+                await asyncio.sleep(5)
 
 async def main():
     try:

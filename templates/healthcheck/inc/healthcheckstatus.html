@@ -1,10 +1,10 @@
 <script type="text/javascript">
 let healthstatus={}
 healthstatus["healthcheck"] = {"healthcheck":{"message":"Initial","nextcheck":new Date({{healthservice_nextcheck}}) } }
-{% for section in healthcheck.sectionlist %}
+{% for section in healthcheck.healthchecksections %}
 healthstatus['{{section.sectionid}}'] = {}
-    {% for service in section.servicelist %}
-healthstatus['{{section.sectionid}}']['{{service.serviceid}}'] = {"nextcheck": "{{service.healthstatus_nextcheck}}","message":`Health Status : {{service.healthstatus_name}}
+    {% for service in section.healthcheckservices %}
+healthstatus['{{section.sectionid}}']['{{service.serviceid}}'] = {"checkstart":"{{service.healthstatus[1][0]}}","nextcheck": new Date("{{service.healthstatus[0]}}"),"message":`Health Status : {{service.healthstatus_name}}
 Check Start Time : {{service.healthstatus_checkstart}} 
 Check End Time : {{service.healthstatus_checkend}}
 Health Status Message : {{service.healthstatus_info}}
@@ -15,39 +15,73 @@ Next Check Time : {{service.healthstatus_nextcheck}}
 
 let connect_msg = "initial connecting..."
 let connected = false
+const statuslist = ["green","yellow","red","error"]
 
 function browserside_check() {
+    now = new Date()
+    var nextcheck_timeout = {{nextcheck_timeout}}
     Object.entries(healthstatus).forEach(([section, sectionstatus]) => {
         Object.entries(sectionstatus).forEach(([service,servicestatus]) => {
             if (!servicestatus["nextcheck"]) {
                 return
             }
-            now = new Date()
-            if (now - servicestatus["nextcheck"] > {{nextcheck_timeout}} ) {
+            if (!servicestatus["nextcheck"]) {
+                return
+            }
+            if (( section == "healthcheck") && ( service == "healthcheck")) {
+                nextcheck_timeout = 5000
+            } else {
+                nextcheck_timeout = {{nextcheck_timeout}}
+            }
+            if (now - servicestatus["nextcheck"] > nextcheck_timeout ) {
                 //next check not running, maybe caused by healthcheck service or the target service
-                try{
-                    document.getElementById(section+ "-" + service + "-statusname-img").src = "/static/img/error.svg"
-                }catch(error) {
-                    document.getElementById(section+ "-" + service + "-statusname").innerHTML = '<img id="' + section + '-' + service + '-statusname-img" src="/static/img/error.svg" class="healthstatusimg"/>'
-                }
+                statuslist.forEach((status) => {
+                    if (status == "error") {
+                        document.getElementById(section+ "-" + service + "-statusname-error").style.display = "inline"
+                    } else {
+                        document.getElementById(section+ "-" + service + "-statusname-" + status).style.display = "none"
+                    }
+                });
+                
                 nextcheck = servicestatus["nextcheck"]
-                nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + " " + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
-                healthstatus[section][service]["message"] = `Health Status : error 
+                nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + "T" + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
+                if (connect_msg) {
+                    healthstatus[section][service]["message"] = `Health Status : error 
+    Health Status Message : ` + connect_msg + `
+    Next Check Time:` + nextcheckstr + `
+    `
+                    if (document.getElementById(section+ "-" + service + "-details")) {
+                        document.getElementById(section+ "-" + service + "-details").style.display="none"
+                    }
+                } else {
+                    healthstatus[section][service]["message"] = `Health Status : error 
     Health Status Message : Next Health check should be executed ` + Math.floor((now - servicestatus["nextcheck"]) / 1000) + ` seconds ago.
     Next Check Time:` + nextcheckstr + `
     `
+                }
             }
         });
     });
 }
 
-setInterval(browserside_check,{{nextcheck_checkinterval}})
+
+function start_browserside_check(){
+   browserside_check()
+   setInterval(browserside_check,{{nextcheck_checkinterval}})
+
+}
+
+ window.onload = function() {
+     setTimeout(start_browserside_check,2000)
+};
+
 function fetch_healthstatus() {
     connected = false
     
-    fetch("{{baseurl}}/healthstatusstream")
+    fetch("{{statusstreamurl}}")
     .then((response) => {
         const decoderStream = new TextDecoderStream();
+        connect_msg = null
         return response.body.pipeThrough(decoderStream)
       })
     .then((resbody) => {
@@ -60,7 +94,6 @@ function fetch_healthstatus() {
           reader.read().then(({ done, value }) => {
           // If there is no more data to read
               if (done) {  
-                  connect_msg = "All data are fetched."
                   setTimeout(fetch_healthstatus,5)
                   return;
               }
@@ -89,13 +122,21 @@ function fetch_healthstatus() {
                       if (datas[i][1] === null) {
                           continue
                       }
-                      try{
-                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname-img").src = "/static/img/" + datas[i][1][1][2] + ".svg"
-                      }catch(error) {
-                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname").innerHTML = '<img id="' + datas[i][0][0] + '-' + datas[i][0][1] + '-statusname-img" src="/static/img/' + datas[i][1][1][2] + '.svg" class="healthstatusimg"/>'
+                      checkstart = datas[i][1][1][0]
+                      if (healthstatus[datas[i][0][0]][datas[i][0][1]]["checkstart"] == checkstart) {
+                          //the status was already processed before
+                          continue
                       }
+                      healthstatus[datas[i][0][0]][datas[i][0][1]]["checkstart"] = checkstart
+                      statuslist.forEach((status) => {
+                          if (status == datas[i][1][1][2]) {
+                              document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname-" + status).style.display="inline"
+                          } else {
+                              document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname-" + status).style.display="none"
+                          }
+                      });
                       nextcheck = new Date(datas[i][1][0])
-                      nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + " " + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
+                      nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + "T" + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
                       healthstatus[datas[i][0][0]][datas[i][0][1]]["message"] = "Health Status : " + datas[i][1][1][2] + `
     Check Start Time : ` + datas[i][1][1][0] + `
     Check End Time : ` + datas[i][1][1][1] + `
@@ -110,7 +151,6 @@ function fetch_healthstatus() {
                           document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details").style.display="none";
                           document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href="";
                       }
-                      console.log( document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href)
                   } catch(error) {
                       continue
                   }
@@ -120,7 +160,7 @@ function fetch_healthstatus() {
               readdata();
             })
           .catch(error => {
-              connect_msg = "Connection Error: " + error
+              connect_msg = "Disconnect from healthcheck web server, try again 5 minutes later: " + error
               setTimeout(fetch_healthstatus,5)
           });
     
@@ -128,8 +168,7 @@ function fetch_healthstatus() {
       readdata()
     })
     .catch(error => {
-        console.log("Fetch data error : " + error)
-        connect_msg = "Connection Error: " + error
+        connect_msg = "Disconnect from healthcheck web server, try again 5 minutes later: " + error
         setTimeout(fetch_healthstatus,5)
     })
 }
@@ -137,31 +176,47 @@ function fetch_healthstatus() {
 fetch_healthstatus()
 </script>
 
-<img src="/static/img/green.svg" style="width:32px;height:32px;display:none" alt="cache the image"/>
-<img src="/static/img/yellow.svg" style="width:32px;height:32px;display:none" alt="cache the image"/>
-<img src="/static/img/red.svg" style="width:32px;height:32px;display:none" alt="cache the image"/>
-<img src="/static/img/error.svg" style="width:32px;height:32px;display:none" alt="cache the image"/>
 <table class="healthstatusblock">
     <tr class="sectionhealthstatusrow"><td class="sectionhealthstatuscolumn">
     <div class="servicehealthstatus">
         <div class="servicename">HEALTH CHECK Service</div>
         <div class="healthstatus" id="healthcheck-healthcheck-statusname">
-          <img id="healthcheck-healthcheck-statusname-img" src="/static/img/green.svg" class="healthstatusimg"/>
+            <img id="healthcheck-healthcheck-statusname-green" src="/static/img/green.svg" style="display:inline" class="healthstatusimg"/>
+            <img id="healthcheck-healthcheck-statusname-yellow" src="/static/img/yellow.svg" style="display:none" class="healthstatusimg"/>
+            <img id="healthcheck-healthcheck-statusname-red" src="/static/img/red.svg" style="display:none" class="healthstatusimg"/>
+            <img id="healthcheck-healthcheck-statusname-error" src="/static/img/error.svg" style="display:none" class="healthstatusimg"/>
         </div>
         <div class="healthstatusbuttons">
             <A href="javascript:alert(healthstatus['healthcheck']['healthcheck']['message'])"><img src="/static/img/info.svg" class="imgbutton"/></A> 
         </div>
     </div>
     </td></tr>
-{% for section in healthcheck.sectionlist %}
+{% for section in healthcheck.healthchecksections %}
     <tr class="sectionnamerow"><td class="sectionnamecolumn"><span class="sectionname">{{section.name}}</span></td></tr>
     <tr class="sectionhealthstatusrow"><td class="sectionhealthstatuscolumn">
-    {% for service in section.servicelist %}
+    {% for service in section.healthcheckservices %}
     <div class="servicehealthstatus">
         <div class="servicename">{{service.name}}</div>
         <div class="healthstatus" id="{{section.sectionid}}-{{service.serviceid}}-statusname">
-              {% if service.healthstatus_name != "" %}
-              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-img" src="/static/img/{{ service.healthstatus_name }}.svg" class="healthstatusimg"/>
+              {% if service.healthstatus_name == "green" %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-green" src="/static/img/green.svg" style="display:inline" class="healthstatusimg"/>
+              {% else %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-green" src="/static/img/green.svg" style="display:none" class="healthstatusimg"/>
+              {% endif %}
+              {% if service.healthstatus_name == "yellow" %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-yellow" src="/static/img/yellow.svg" style="display:inline" class="healthstatusimg"/>
+              {% else %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-yellow" src="/static/img/yellow.svg" style="display:none" class="healthstatusimg"/>
+              {% endif %}
+              {% if service.healthstatus_name == "red" %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-red" src="/static/img/red.svg" style="display:inline" class="healthstatusimg"/>
+              {% else %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-red" src="/static/img/red.svg" style="display:none" class="healthstatusimg"/>
+              {% endif %}
+              {% if service.healthstatus_name == "error" %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-error" src="/static/img/error.svg" style="display:inline" class="healthstatusimg"/>
+              {% else %}
+              <img id="{{section.sectionid}}-{{service.serviceid}}-statusname-error" src="/static/img/error.svg" style="display:none" class="healthstatusimg"/>
               {% endif %}
         </div>
         <div class="healthstatusbuttons">
@@ -179,7 +234,9 @@ fetch_healthstatus()
             {% endif %}
             </span>
             {% if service.historyenabled %}
-            | <A target="health check history" href="{{baseurl}}/history/{{service.sectionid}}/{{service.serviceid}}"><img src="/static/img/history.svg" class="imgbutton"/></A>
+            <span id="{{section.sectionid}}-{{service.serviceid}}-history">
+            | <A target="health check history" id="{{section.sectionid}}-{{service.serviceid}}-history-link" href="{{baseurl}}/history/{{service.sectionid}}/{{service.serviceid}}"><img src="/static/img/history.svg" class="imgbutton"/></A>
+            </span>
             {% endif %}
         </div>
     </div>

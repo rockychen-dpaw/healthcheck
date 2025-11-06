@@ -88,16 +88,29 @@ async def shutdown(block=True):
                 service.shutdown()
             logger.info("The registered service({}) is already shutdown.".format(service))
 
-async def wait(timeout=settings.BLOCK_TIMEOUT):
+async def wait(timeout=None):
     global shutdowning
-    try:
-        await shutdownevent.wait()
-    except asyncio.CancelledError as ex:
-        await shutdown(False)
-        raise SystemShutdown()
-    except KeyboardInterrupt as ex:
-        await shutdown(False)
-        raise SystemShutdown()
+    if not timeout or timeout <= 0:
+        try:
+            await shutdownevent.wait()
+        except asyncio.CancelledError as ex:
+            await shutdown(False)
+            raise SystemShutdown()
+        except KeyboardInterrupt as ex:
+            await shutdown(False)
+            raise SystemShutdown()
+    else:
+        try:
+            async with asyncio.timeout(timeout):
+                await shutdownevent.wait()
+        except asyncio.CancelledError as ex:
+            await shutdown(False)
+            raise SystemShutdown()
+        except KeyboardInterrupt as ex:
+            await shutdown(False)
+            raise SystemShutdown()
+        except TimeoutError as ex:
+            pass
 
 
 async def process_userinterruption():

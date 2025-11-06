@@ -1,0 +1,7 @@
+{% if messages %}
+<ul>
+{% for msg in messages %}
+<li><span style="color:red; font-weight:bold;">{{msg}}<span></li>
+{% endfor %}
+</ul>
+{% endif %}

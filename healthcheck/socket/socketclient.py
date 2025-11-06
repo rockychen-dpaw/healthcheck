@@ -20,9 +20,9 @@ logger = logging.getLogger("healthcheck.socketclient")
 class SocketClient(object):
     count = 0
     conn_type = None
-    def __init__(self):
-        self.host = "127.0.0.1" if settings.HEALTHCHECKSERVER_LOCAL else "0.0.0.0"
-        self.port = settings.HEALTHCHECKSERVER_PORT
+    def __init__(self,host=settings.HEALTHCHECKSERVER_HOST,port=settings.HEALTHCHECKSERVER_PORT):
+        self.host = host
+        self.port = port
         self.__class__.count += 1
         self.name = "{} socketclient({}:{})_{}".format(self.conn_type,self.host,self.port,self.count)
         self._conn = None #[reader,writer]
@@ -68,7 +68,8 @@ class SocketClient(object):
                 try:
                     logger.debug("{}: Try to connect to socket server.".format(self))
 
-                    reader,writer = await asyncio.open_connection(self.host,self.port) 
+                    async with asyncio.timeout(1):
+                        reader,writer = await asyncio.open_connection(self.host,self.port) 
                     conn = base.BaseConnection(reader,writer)
                     logger.info("{} : Connected".format(self))
 
@@ -158,7 +159,7 @@ class SocketClient(object):
             except exceptions.MalformedData as ex:
                 raise ex
             except Exception as ex:
-                if not isinstance(ex,exceptions.ConnectionClosed):
+                if not isinstance(ex,(exceptions.ConnectionClosed,ConnectionResetError,ConnectionResetError)):
                     logger.error("{}: Unexpected exception.\n{}".format(self,traceback.format_exc()))
                 await self.close()
                 reconnect += 1
@@ -171,8 +172,8 @@ class SocketClient(object):
 
 class CommandClient(SocketClient):
     conn_type = connectiontype.COMMAND
-    def __init__(self,conn_type):
-        super().__init__()
+    def __init__(self,host=settings.HEALTHCHECKSERVER_HOST,port=settings.HEALTHCHECKSERVER_PORT):
+        super().__init__(host=host,port=port)
         self._lock = asyncio.Lock()
 
     async def exec(self,command,reconnect_attempts=-1):
@@ -205,19 +206,19 @@ class CommandClient(SocketClient):
                     else:
                         raise ex
                 except Exception as ex:
-                    logger.error("{}: Unexpected exception.\n{}".format(self,traceback.format_exc()))
+                    logger.error("{}: Unexpected exception.\n{}".format(self,str(ex)))
                     reconnect += 1
                     if (reconnect_attempts == -1 or reconnect <= reconnect_attempts): 
                         continue
                     else:
                         raise ex
 
-commandclient = CommandClient("command")
+commandclient = CommandClient()
 
 async def main():
     try:
         #listener = HealthStatusListenerClient()
-        commandclient = CommandClient("command")
+        commandclient = CommandClient()
         while True:
             try:
                 command = await utils.ainput("Enter socket command to execute or 'exit' to quit.")

@@ -1,4 +1,5 @@
 import logging
+import socket as builtinsocket
 import asyncio
 import threading
 import sys
@@ -117,6 +118,7 @@ class CommandConnection(socket.CommandConnection):
     STOP_PREVIEW_HEALTHCHECK="stop_preview_healthcheck"
     SAVE_EDITING_HEALTHCHECK="save_editing_healthcheck"
     async def start_preview_healthcheck(self):
+        await EditingHealthStatusSubscriptor.healthconfig_changed()
         await healthcheck.editing_healthcheck.continuous_check(self.server,taskcls=EditingServiceHealthCheckTask)
         return [True,"OK"]
 
@@ -159,9 +161,67 @@ def get_connection_cls(conn_type):
     else:
         return None
 
+class HealthCheckServer(socket.SocketServer):
+    async def start(self):
+        lockfile = os.path.join(settings.HEALTHCHECK_DATA_DIR,".healthcheckserver.lock")
+        if os.path.exists(lockfile):
+            #shutdown the current server first
+            try:
+                with open(lockfile) as f:
+                    data = f.read().strip()
+                host,port = data.split(":",1)
+                port = int(port)
+                commandclient = socket.CommandClient(host,port)
+                await commandclient.exec("shutdown",0)
+                logger.info("Wait the current healthcheck server to shutdown...")
+                while True:
+                    try:
+                        await commandclient.exec("ping",0)
+                        await shutdown.wait(5)
+                        break
+                    except:
+                        break
+                logger.info("The current healthcheck server has already shutdown")
+            except ConnectionRefusedError as ex:
+                #The healthcheck server is not running
+                pass
+            except TimeoutError as ex:
+                #The healthcheck server is not running
+                pass
+            except OSError as ex:
+                #The healthcheck server is not running
+                pass
+            except Exception as ex:
+                raise Exception("The lock file({0}) is corrupted. data={1}. {2}: {3}".format(lockfile,data,ex.__class__.__name__,str(ex)))
+
+        lockfile_ex = None
+        for url in ("8.8.8.8",settings.AUTH2_URL):
+            if not url:
+                continue
+            s = None
+            try:
+                s = builtinsocket.socket(builtinsocket.AF_INET, builtinsocket.SOCK_DGRAM)
+                s.connect((url, 80))
+                ip = s.getsockname()[0]
+                with open(lockfile,'w') as f:
+                    f.write("{}:{}".format(ip,settings.HEALTHCHECKSERVER_PORT))
+                lockfile_ex = None
+                break
+            except Exception as ex:
+                lockfile_ex = ex
+                
+            finally:
+                if s:
+                    s.close()
+
+        if lockfile_ex:
+            raise Exception("Failed to create the lock file({}) for socket server.{}: {}".format(lockfile,lockfile_ex.__class__.__name__,str(lockfile_ex)))
+
+        await super().start()
+
 async def main():
     try:
-        server = socket.SocketServer(f_get_connection_cls=get_connection_cls)
+        server = HealthCheckServer(f_get_connection_cls=get_connection_cls)
         await server.start()
         await healthcheck.continuous_check(server,taskcls=ServiceHealthCheckTask)
         await shutdown.wait()

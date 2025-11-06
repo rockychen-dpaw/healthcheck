@@ -212,42 +212,72 @@ def _init_cond(cond):
         return newcond
     elif len(cond) == 5:
         pass
+    elif isinstance(cond[1],str) and cond[1].strip().startswith("lambda "):
+        """
+        [data category,lambda expression]
+        [data category,lambda expression,parameters]
+        """
+        if len(cond) == 2:
+            cond.append(None)
+        elif len(cond) > 3:
+            raise Exception("The condition({}) is invalid.{}".format(conds,conds_help))
+        cond.insert(1,None)
+        cond.insert(2,"lambda")
+    elif len(cond) >=3 and isinstance(cond[2],str) and cond[2].strip().startswith("lambda "):
+        """
+        [data category,key,lambda expression]
+        [data category,key,lambda expression,parameters]
+        """
+        if len(cond) == 3:
+            cond.append(None)
+        elif len(cond) > 4:
+            raise Exception("The condition({}) is invalid.{}".format(conds,conds_help))
+        cond.insert(2,"lambda")
+    elif cond[1] in operators:
+        """
+        [data category,operator,expected_value]
+        [data category,operator,expected_value,parameters]
+        """
+        if len(cond) == 3:
+            cond.append(None)
+        elif len(cond) > 4:
+            raise Exception("The condition({}) is invalid.{}".format(conds,conds_help))
+        cond.insert(1,None)
+    elif len(cond) >= 3 and cond[2] in operators:
+        """
+        [data category,key,operator]
+        [data category,key,operator,expected_value]
+        [data category,key,operator,expected_value,parameters]
+        """
+        if len(cond) == 3:
+            cond.append(None)
+            cond.append(None)
+        elif len(cond) == 4:
+            cond.append(None)
+        elif len(cond) > 5:
+            raise Exception("The condition({}) is invalid.{}".format(cond,conds_help))
+    elif len(cond) == 2:
+        """
+        [data category,expected_value]
+        """
+        cond.insert(1,None)
+        cond.insert(2,"==")
+        cond.append(None)
+    elif len(cond) == 3 and isinstance(cond[1],str) and isinstance(cond[2],str):
+        """
+        [data category,key,expected_value]
+        """
+        cond.insert(2,"==")
+        cond.append(None)
+    elif len(cond) == 3 and isinstance(cond[1],str) and isinstance(cond[2],dict):
+        """
+        [data category,expected_value,params]
+        """
+        cond.insert(1,None)
+        cond.insert(2,"==")
     else:
-        if isinstance(cond[1],str) and cond[1].strip().startswith("lambda "):
-            if len(cond) > 3:
-                raise Exception("The condition({}) is invalid.{}".format(conds,conds_help))
-            cond.insert(1,None)
-            cond.insert(2,"lambda")
-        elif len(cond) >=3 and isinstance(cond[2],str) and cond[2].strip().startswith("lambda "):
-            if len(cond) > 4:
-                raise Exception("The condition({}) is invalid.{}".format(conds,conds_help))
-            cond.insert(2,"lambda")
-        elif cond[1] in operators:
-            if len(cond) > 4:
-                raise Exception("The condition({}) is invalid.{}".format(conds,conds_help))
-            cond.insert(1,None)
-        elif len(cond) >= 3 and cond[2] in operators:
-            if len(cond) > 5:
-                raise Exception("The condition({}) is invalid.{}".format(cond,conds_help))
-        elif len(cond) == 2:
-            cond.insert(1,None)
-            cond.insert(2,"==")
-        elif len(cond) == 3 and isinstance(cond[1],str) and isinstance(cond[2],str):
-            cond.insert(2,"==")
-        elif len(cond) == 3 and isinstance(cond[1],str) and isinstance(cond[2],dict):
-            cond.insert(1,None)
-            cond.insert(2,"==")
-        else:
-            if len(cond) > 3:
-                raise Exception("The condition({}) is invalid.{}".format(cond,conds_help))
+        raise Exception("The condition({}) is invalid.{}".format(cond,conds_help))
 
-            cond.insert(1,None)
-            cond.insert(2,"==")
-
-    if len(cond) < 4:
-        cond.append(None)
-    if len(cond) < 5:
-        cond.append(None)
 
     #validate the operands
     if cond[2] == "lambda":
@@ -318,10 +348,14 @@ A valid condition have the following formats:
     [data category,lambda expression,parameters]: the data category only  has single data or means the whole data. validate the data with lambda expression. parameters is dict object
     [data category,key,lambda expression]: validate the data with lambda expression . no parameters
     [data category,key,lambda expression,parameters]: validate the data with lambda expression. parameters is dict object
+
     [data category,expected_value]: the data category only  has single data or means the whole data. operator is '=='. no parameters
     [data category,expected_value,parameters]: the data category only  has single data or means the whole data. operator is '=='. parameters is dict object
+    [data category,key,expected_value]: the data category only  has single data or means the whole data. operator is '=='. no parameters
+
     [data category,operator,expected_value]: the data category only  has single data or means the whole data. no parameters
     [data category,operator,expected_value,parameters]: the data category only  has single data or means the whole data. parameters is a dict object
+
     [data category,key,operator,expected_value]: the data category is a complx object, the condition is applied on the propertis of the object. no parameters
     [data category,key,operator,expected_value,parameters]: the data category is a complx object, the condition is applied on the propertis of the object. parameters is a dict object
     [data category,'and',[],[],...]: a logical 'and' which all conditions are applied on this data category

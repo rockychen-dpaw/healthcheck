@@ -1,4 +1,3 @@
-
 class PingMixin(object):
     PING="ping"
     def ping(self):
