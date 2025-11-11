@@ -126,8 +126,8 @@ class HealthCheckStatus(object):
             return None
         try:
             checkstatus = json.loads(data)
-            checkstatus[0] = datetime.strptime(checkstatus[0],"%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=settings.TZ)
-            checkstatus[1] = datetime.strptime(checkstatus[1],"%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=settings.TZ)
+            checkstatus[0] = utils.parse_datetime(checkstatus[0])
+            checkstatus[1] = utils.parse_datetime(checkstatus[1])
         except Exception as ex:
             raise Exception("The healthcheck status({}) is corrupted".format(data))
 
@@ -172,7 +172,7 @@ class HealthCheckPage(object):
     def deserialize(cls,healthcheckpages,data):
         try:
             pageindexdata = json.loads(data)
-            pageindexdata[0] = datetime.strptime(pageindexdata[0],"%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=settings.TZ)
+            pageindexdata[0] = utils.parse_datetime(pageindexdata[0])
             pageindexdata[1] = os.path.join(healthcheckpages.basedir,pageindexdata[1])
             return cls(healthcheckpages,*pageindexdata)
         except Exception as ex:
@@ -517,7 +517,7 @@ class ServiceHealthCheck(UserDict):
 
     @property
     def headers(self):
-        return self.get("headers")
+        return self["headers"]
 
     _auth = None
     @property
@@ -606,6 +606,46 @@ class ServiceHealthCheck(UserDict):
     def healthdetailpersistent(self):
         return self["healthdetailpersistent"]
 
+    def get_nextchecktime(self,last_checkingtime,now=None,today=None,tomorrow=None,seconds_in_day=None):
+        if not now:
+            now = utils.now()
+            today = datetime(year = now.year,month=now.month,day=now.day,tzinfo=settings.TZ)
+            tomorrow = today + timedelta(days=1)
+            seconds_in_day = int((now - today).total_seconds())
+
+        next_checktime_seconds = seconds_in_day - (seconds_in_day % self.interval)
+        next_checktime = today + timedelta(seconds=next_checktime_seconds)
+
+        if last_checkingtime and next_checktime <= last_checkingtime:
+            next_checktime += timedelta(seconds=self.interval)
+            next_checktime_seconds += self.interval
+            if next_checktime >= tomorrow:
+                next_checktime = tomorrow
+                next_checktime_seconds = 0
+
+
+        checkingtime = self["checkingtime"]
+        if not checkingtime:
+            return next_checktime
+
+        index = -1
+        for i in range(len(checkingtime)):
+            starttime = checkingtime[i][0]
+            endtime = checkingtime[i][1]
+            if next_checktime_seconds >= starttime and next_checktime_seconds < endtime:
+                return next_checktime
+            elif next_checktime_seconds < starttime:
+                if starttime % self.interval == 0:
+                    return next_checktime + timedelta(seconds=starttime - next_checktime_seconds)
+                else:
+                    return next_checktime + timedelta(seconds=starttime + self.interval - (starttime % self.interval) - next_checktime_seconds)
+
+        #can't find the next check time in the same day, try next day
+        if starttime % self.interval == 0:
+            return tomorrow + timedelta(seconds=checkingtime[0][0])
+        else:
+            return tomorrow + timedelta(seconds=checkingtime[0][0] + self.interval - (checkingtime[0][0] % self.interval))
+
     async def save_checkingstatus(self,healthstatus,res):
         if healthstatus[-1]:
             details = {
@@ -654,20 +694,10 @@ class ServiceHealthCheck(UserDict):
 
     def load_checkinghistory(self):
         last_healthcheck = self.healthcheckpages.last_healthcheck
-        now = utils.now()
-        today = datetime(year = now.year,month=now.month,day=now.day,tzinfo=settings.TZ)
-        tomorrow = today + timedelta(days=1)
-        seconds_in_day = int((now - today).total_seconds())
 
-        next_checktime = today + timedelta(seconds=seconds_in_day - (seconds_in_day % self.interval))
-        if last_healthcheck and next_checktime <= last_healthcheck[0]:
-            next_checktime += timedelta(seconds=self.interval)
-            if next_checktime >= tomorrow:
-                self["healthstatus"] = [tomorrow,last_healthcheck] #[next checking time,[latest checking starttime ,endtime,health status,msg]]
-            else:
-                self["healthstatus"] = [next_checktime,last_healthcheck] 
-        else:
-            self["healthstatus"] = [next_checktime,last_healthcheck] 
+        next_checktime = self.get_nextchecktime(last_healthcheck[0] if last_healthcheck else None)
+        self["healthstatus"] = [next_checktime,last_healthcheck] 
+
 
 class JsonStatusMixin(object):
     def get_jsonstatus(self,details=False):
@@ -726,7 +756,7 @@ class HealthCheck(JsonStatusMixin):
             return False
 
         now = utils.now()
-        today = datetime(year = now.year,month=now.month,day=now.day).astimezone(settings.TZ)
+        today = datetime(year = now.year,month=now.month,day=now.day,tzinfo=settings.TZ)
         tomorrow = today + timedelta(days=1)
         seconds_in_day = int((now - today).total_seconds())
         for section in self.healthchecksections:
@@ -790,7 +820,7 @@ class HealthCheck(JsonStatusMixin):
     def init_configs(self,configs):
         #initialize the configs
         now = utils.now()
-        today = datetime(year = now.year,month=now.month,day=now.day).astimezone(settings.TZ)
+        today = datetime(year = now.year,month=now.month,day=now.day,tzinfo=settings.TZ)
         tomorrow = today + timedelta(days=1)
         seconds_in_day = int((now - today).total_seconds())
         if not configs:
@@ -820,6 +850,20 @@ class HealthCheck(JsonStatusMixin):
                 baseurl = baseurl[:-1]
             if baseurl:
                 config["baseurl"] = baseurl
+
+            basecheckingtime = config.get("checkingtime")
+            try:
+                basecheckingtime = checks.parse_checkingtime(basecheckingtime)
+            except Exception as ex:
+                errors.append("Section {}({}): The checktime({}) is incorrect.{}".format(sectionindex,sectionid,basecheckingtime,str(ex)))
+                basecheckingtime = None
+
+            config["checkingtime"] = basecheckingtime
+
+            baseheaders = config.get("headers")
+            if not baseheaders:
+                baseheaders = {}
+                config["headers"] = baseheaders
 
             basequeryparameters = config.get("queryparameters")
             if not basequeryparameters:
@@ -911,6 +955,26 @@ class HealthCheck(JsonStatusMixin):
                         if k not in queryparameters:
                             queryparameters[k] = v
                 service["queryparameters"] = queryparameters
+
+                headers = service.get("headers")
+                if not headers:
+                    headers = baseheaders
+                else:
+                    for k,v in baseheaders.items():
+                        if k not in headers:
+                            headers[k] = v
+                service["headers"] = headers if headers else None
+
+                checkingtime = service.get("checkingtime")
+                if checkingtime:
+                    try:
+                        checkingtime = checks.parse_checkingtime(checkingtime)
+                    except Exception as ex:
+                        errors.append("Service {0}({1}).{2}: The checktime({3}) is incorrect.{4}".format(sectionindex,sectionid,serviceindex,checkingtime,str(ex)))
+                        checkingtime = None
+                else:
+                    checkingtime = basecheckingtime
+                service["checkingtime"] = checkingtime
 
                 location = service.get("location")
                 location = location.strip() if location else None
@@ -1108,7 +1172,7 @@ class HealthCheck(JsonStatusMixin):
             return
 
         now = utils.now()
-        today = datetime(year = now.year,month=now.month,day=now.day).astimezone(settings.TZ)
+        today = datetime(year = now.year,month=now.month,day=now.day,tzinfo=settings.TZ)
         tomorrow = today + timedelta(days=1)
         seconds_in_day = int((now - today).total_seconds())
 
@@ -1120,10 +1184,7 @@ class HealthCheck(JsonStatusMixin):
                     logger.debug("{} : Run a task to check the service({}.{})  to task runner.".format(self,service.sectionid,service.serviceid))
                     task = taskcls(service,*args)
                     asyncio.create_task(task.run())
-                    next_checktime = today + timedelta(seconds=seconds_in_day + service.interval - (seconds_in_day % service.interval))
-                    if next_checktime > tomorrow:
-                        #next checktime is in tomorrow. reset next checktime to midnight
-                        next_checktime = tomorrow
+                    next_checktime = service.get_nextchecktime(service["healthstatus"][0],now,today,tomorrow,seconds_in_day)
                     service["healthstatus"][0] = next_checktime
                 else:
                     next_checktime = service["healthstatus"][0]

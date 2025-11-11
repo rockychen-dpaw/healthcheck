@@ -12,19 +12,27 @@
     </style>
   </head>
   <body>
-      <h3><A href="/healthcheck">Home</A> > {{healthcheck.title}} 
-      {% if editable %}
-      <br>
-      <A target="Edit health check configuration" href="/healthcheck/config/edit">Edit</A> | 
-      <A target="Edit health check configuration" href="/healthcheck/config/publishhistories">Publish Histories</A> | 
+      <h3>
+      <table class="menubar"><tr><th>
       {% if system %}
-      <A href="/healthcheck/config/view/{{system}}">Setting</A> 
-      {% else %}
-      <A href="/healthcheck/customize">Customize</A> 
+      <A href='/healthcheck'>Home</A> ->  <A href='/healthcheck/dashboard'> Default Dashboard</A> -> {{healthcheck.title}}
+      {% else%}
+      <A href='/healthcheck'>Home</A> -> Default Dashboard
       {% endif %}
+      </th><td style="text-aligh:right">
+      {% if adminable %}
+        {% if system %}
+      <A  href="/healthcheck/config/systemview/{{system}}">Edit</A> | 
+      <A href="/healthcheck/config/view/{{system}}">Setting</A> 
+        {% else %}
+      <A target="Edit health check configuration" href="/healthcheck/config/edit">Config Health Check</A> | 
+      <A target="Edit health check configuration" href="/healthcheck/config/publishhistories">Publish Histories</A> | 
+      <A href="/healthcheck/customize">Customize</A> 
+        {% endif %}
       {% elif user %}
       <A href="/healthcheck/customize">Customize</A> 
       {% endif %}
+      </td></tr></table>
       </h3>
 
       {% include 'healthcheck/inc/healthcheckstatus.html' %}

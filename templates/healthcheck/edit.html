@@ -16,12 +16,17 @@
   </head>
   <body>
       <form action="/healthcheck/config/edit" method="POST">
-      <h3>DBCA Essential Systems Health Check Editing 
-          <A target="Preview Editing health check configuration" href="/healthcheck/config/preview">Preview</A>
-          <A  href="/healthcheck/config/publish">Publish</A>
-          <button type="submit" name="action" value="save">Save</button>
+      <h3>
+      <table class="menubar"><tr><th>
+          <A href='/healthcheck'>Home</A> ->  <A href='/healthcheck/dashboard'> Default Dashboard</A> -> Config Health Check 
+      </th><td style="text-aligh:right">
+          <A target="Preview Editing health check configuration" href="/healthcheck/config/preview">Preview</A> | 
+          <A  href="/healthcheck/config/publish">Publish</A> | 
+          <button type="submit" name="action" value="save">Save</button> | 
           <button type="submit" name="action" value="reset">Reset</button>
+      </td></tr></table>
       </h3>
+
       {% if message %}
       <h4 style="color:red;white-space:pre;">{{message}}<h4>
       {% endif %}

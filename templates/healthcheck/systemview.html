@@ -16,16 +16,26 @@
   </head>
   <body>
       {% if system %}
-      <h3>Edit {{System}} </h3>
-      {% else %}
-      <h3>Add System </h3>
-      {% endif %}
-      {% include 'healthcheck/inc/messages.html' %}
-      {% if system %}
       <form action="/healthcheck/config/systemview/{{viewmeta.id}}" method="POST">
       {% else %}
       <form action="/healthcheck/config/systemview" method="POST">
       {% endif %}
+      <h3>
+      <table class="menubar"><tr><th>
+          <A href='/healthcheck'>Home</A> -> <A href='/healthcheck/dashboard'> Default Dashboard</A>
+          {% if system %}
+          -> <A href='/healthcheck/dashboard/{{system}}'> {{system}} Dashboard </A> -> Editing
+          {% else %}
+          -> Adding System Dashboard
+          {% endif %}
+      </th><td style="text-aligh:right">
+            <button type="submit" name="action" value="save" style="padding-left:10px;padding-right:10px;">Save</button> | 
+            <button type="button" onclick="window.location.href='/healthcheck/config/systemview/{{viewmeta.id}}/delete'" style="padding-left:10px;padding-right:10px">Delete</button> | 
+            <button type="submit" name="action" value="cancel" style="padding-left:10px;padding-right:10px">Cancel</button>
+      </td></tr></table>
+      </h3>
+
+      {% include 'healthcheck/inc/messages.html' %}
           <div style="text-align:center;width:100%">
           <table style="width:80%;text-align:center">
               <tr><th style="width:200px;text-align:right">System Identity:</th>
@@ -45,11 +55,6 @@
                   <th style="width:200px;text-align:right">Description: </th>
                   <td style="text-align:left"><input type="text" name="description" value="{{viewmeta.description}}" style="width:90%"></td>
               </tr>
-              <tr><td colspan=3>
-                <button type="submit" name="action" value="save" style="padding-left:10px;padding-right:10px;">Save</button>
-                <button type="button" onclick="window.location.href='/healthcheck/config/systemview/{{viewmeta.id}}/delete'" style="padding-left:10px;padding-right:10px;margin-left:30px">Delete</button>
-                <button type="submit" name="action" value="cancel" style="padding-left:10px;padding-right:10px;margin-left:30px">Cancel</button>
-               </td></tr>
             </table>
           </div>
       </form>

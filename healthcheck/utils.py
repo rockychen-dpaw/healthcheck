@@ -47,4 +47,18 @@ def deletedir(folder):
 def now():
     return datetime.now().astimezone(settings.TZ)
 
+def parse_datetime(dt,pattern="%Y-%m-%dT%H:%M:%S.%f"):
+    return datetime.strptime(dt,pattern).replace(tzinfo=settings.TZ)
+
+def format_time(dt,pattern="%H:%M:%S"):
+    return dt.strftime(pattern)
+
+def parse_time(dt,pattern="%H:%M:%S"):
+    if dt:
+        return datetime.strptime(dt,pattern).time().replace(tzinfo=settings.TZ)
+    else:
+        return ""
+
+
+
 

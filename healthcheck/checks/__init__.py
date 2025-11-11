@@ -22,6 +22,68 @@ days_re = re.compile("(?P<days>[0-9]+)\\s*days?")
 hours_re = re.compile("(?P<hours>[0-9]+)\\s*hours?")
 minutes_re = re.compile("(?P<minutes>[0-9]+)\\s*(min|minute)s?")
 seconds_re = re.compile("(?P<seconds>[0-9]+)\\s*seconds?")
+
+
+def parse_checkingtime(checkingtime):
+    if not checkingtime:
+        return None
+    else:
+        if not isinstance(checkingtime,(list,tuple)):
+            raise Exception("Checkingtime({}) should be a tuple(starttime,endtime) or a list of tuple(starttime,endtime)".format(checkingtime))
+        elif isinstance(checkingtime,tuple):
+            #convert tuple to list
+            checkingtime = list(checkingtime)
+
+        if isinstance(checkingtime[0],(list,tuple)):
+            #checkingtime is a list of tuple(starttime,endtime)
+            if any( t for t in checkingtime if not isinstance(t,(list,tuple)) or len(t) != 2):
+                raise Exception("Checkingtime({}) should be a tuple(starttime,endtime) or a list of tuple(starttime,endtime)".format(checkingtime))
+
+            #convert tuple to list 
+            for i in range(len(checkingtime)):
+                if isinstance(checkingtime[i],tuple):
+                    checkingtime[i] = list(checkingtime[i])
+        elif len(checkingtime) != 2:
+            raise Exception("Checkingtime({}) should be a tuple(starttime,endtime) or a list of tuple(starttime,endtime)".format(checkingtime))
+        else:
+            #checkingtime is a tauple(starttime,endtime), convert to a list of tuple
+            checkingtime = [checkingtime]
+
+    previous_range = None
+    for timerange in checkingtime:
+        timerange.append(timerange[0])
+        timerange.append(timerange[1])
+        if timerange[0]:
+            timerange[0] = utils.parse_time(timerange[0])
+            timerange[0] = timerange[0].hour * 3600 + timerange[0].minute * 60 + timerange[0].second
+        else:
+            timerange[0] = 0
+
+        if timerange[1]:
+            timerange[1] = utils.parse_time(timerange[1])
+            timerange[1] = timerange[1].hour * 3600 + timerange[1].minute * 60 + timerange[1].second
+        else:
+            timerange[1] = 86400
+
+        if timerange[0] >= timerange[1]:
+            raise Exception("Timerange({0},{1}),Startime({0}) should be less than endtime({1})".format(utils.format_time(timerange[2]),utils.format_time(timerange[3])))
+
+        if previous_range:
+            if previous_range[1] >= timerange[0]:
+                raise Exception("The timerange({0},{1}) is overlapped with timerange({2},{3})".format(
+                    utils.format_time(previous_range[2]),
+                    utils.format_time(previous_range[3]),
+                    utils.format_time(timerange[2]),
+                    utils.format_time(timerange[3])
+                ))
+        previous_range = timerange
+
+    if checkingtime and len(checkingtime) == 1 and checkingtime[0] == 0 and checkingtime[1] == 86400:
+        #checking all day
+        return None
+
+    return checkingtime
+
 def _convert_datatype(val,dt,params=None):
     """
     Convert the val to the desired data type

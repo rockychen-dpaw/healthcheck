@@ -28,7 +28,7 @@ async def can_admin(request):
 
     user = request.headers.get("X-email")
     if not user:
-        return True
+        return False
     try:
         perm = _permissions.get(user)
         now = utils.now()
@@ -117,7 +117,7 @@ async def save_systemview(system):
             viewmeta = healthcheck.get_viewmeta(system)
         else:
             viewmeta = SystemViewMeta(["","","",""])
-        return await render_template("healthcheck/systemview.html",viewmeta=viewmeta)
+        return await render_template("healthcheck/systemview.html",viewmeta=viewmeta,system=system)
     elif request.method == "POST":
         formdata = await request.form
         action = formdata.get("action","save")
@@ -132,7 +132,6 @@ async def save_systemview(system):
                 messages.append("Title can't be empty.")
             if messages:
                 viewmeta = SystemViewMeta([systemid,title,description])
-                print("*****************************")
                 return await render_template("healthcheck/systemview.html",viewmeta=viewmeta,messages=messages,system=system)
             healthcheck.save_systemview(systemid,title,description)
 
@@ -153,7 +152,7 @@ async def dashboard(system):
     healthservice_nextcheck = utils.now() + timedelta(seconds=settings.HEARTBEAT + 1)
     healthservice_nextcheck = int(healthservice_nextcheck.timestamp()) * 1000
     user = request.headers.get("X-email")
-    editable = await can_admin(request)
+    adminable = await can_admin(request)
     if system:
         viewkey = system
         statusstreamurl = "/healthcheck/healthstatusstream/{}".format(system)
@@ -167,7 +166,7 @@ async def dashboard(system):
         healthcheckview = healthcheck
 
 
-    return await render_template("healthcheck/dashboard.html",healthcheck=healthcheckview,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck",statusstreamurl=statusstreamurl,editable=editable,heartbeat=settings.HEARTBEAT,user=user,system=system)
+    return await render_template("healthcheck/dashboard.html",healthcheck=healthcheckview,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck",statusstreamurl=statusstreamurl,adminable=adminable,heartbeat=settings.HEARTBEAT,user=user,system=system)
 
 @app.route("/healthcheck/healthstatusstream",defaults={'system': None})
 @app.route("/healthcheck/healthstatusstream/<system>")

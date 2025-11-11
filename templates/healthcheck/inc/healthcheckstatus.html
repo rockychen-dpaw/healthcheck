@@ -77,10 +77,12 @@ function start_browserside_check(){
 
 function fetch_healthstatus() {
     connected = false
-    
-    fetch("{{statusstreamurl}}")
+    fetch("{{statusstreamurl}}",{redirect:"manual"})
     .then((response) => {
         const decoderStream = new TextDecoderStream();
+        if (response.type == "opaqueredirect") {
+            window.location.reload(true);
+        }
         connect_msg = null
         return response.body.pipeThrough(decoderStream)
       })
@@ -94,7 +96,7 @@ function fetch_healthstatus() {
           reader.read().then(({ done, value }) => {
           // If there is no more data to read
               if (done) {  
-                  setTimeout(fetch_healthstatus,5)
+                  setTimeout(fetch_healthstatus,5000)
                   return;
               }
               //console.log(value)
@@ -160,16 +162,16 @@ function fetch_healthstatus() {
               readdata();
             })
           .catch(error => {
-              connect_msg = "Disconnect from healthcheck web server, try again 5 minutes later: " + error
-              setTimeout(fetch_healthstatus,5)
+              connect_msg = "Disconnect from healthcheck web server, try again 5 seconds later: " + error
+              setTimeout(fetch_healthstatus,5000)
           });
     
       }
       readdata()
     })
     .catch(error => {
-        connect_msg = "Disconnect from healthcheck web server, try again 5 minutes later: " + error
-        setTimeout(fetch_healthstatus,5)
+        connect_msg = "Disconnect from healthcheck web server, try again 5 seconds later: " + error
+        setTimeout(fetch_healthstatus,5000)
     })
 }
 

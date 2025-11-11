@@ -13,15 +13,26 @@
     </style>
   </head>
   <body>
-      <h3>Configure Healthcheck Dashboard View for {{viewkey}}</h3>
       {% if system %}
       <form action="/healthcheck/config/view/{{system}}" method="POST">
       {% else %}
       <form action="/healthcheck/customize" method="POST">
       {% endif %}
 
-      <button type="submit" name="action" value="save">Save</button>
-      <button type="submit" name="action" value="reset">Reset</button>
+
+      <h3>
+      <table class="menubar"><tr><th>
+        {% if system %}
+        <A href='/healthcheck'>Home</A> ->  <A href='/healthcheck/dashboard'> Default Dashboard</A> -> <A href='/healthcheck/dashboard/{{system}}'>{{system}} Dashboard</A> -> Setting
+        {% else%}
+        <A href='/healthcheck'>Home</A> ->  <A href='/healthcheck/dashboard'> Default Dashboard</A> -> Setting 
+        {% endif %}
+      </th><td style="text-aligh:right">
+        <button type="submit" name="action" value="save">Save</button> | 
+        <button type="submit" name="action" value="reset">Reset</button>
+      </td></tr></table>
+      </h3>
+
       <table class="customizeblock">
       {% for section in healthcheck.selectablehealthchecksections %}
           <tr class="customizesectionnamerow"><td class="sectionnamecolumn"><span class="sectionname">{{section.name}}</span></td></tr>
