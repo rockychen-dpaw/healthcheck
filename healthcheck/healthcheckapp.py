@@ -70,7 +70,7 @@ async def ping():
         status = "green" if res[0] else "red"
     except Exception as ex:
         status = "red"
-        msg = "{}:{}".format(ex.__class__.__name__,str(ex))
+        msg = "Failed to ping healthcheck server. {}:{}".format(ex.__class__.__name__,str(ex))
     finally:
         end = utils.now()
     return "{}\n".format(json.dumps([["healthcheck","healthcheck"],[nextcheck,[start,end,status,msg,False ]]],cls=serializers.JSONFormater)).encode()

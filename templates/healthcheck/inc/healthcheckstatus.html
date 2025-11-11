@@ -4,12 +4,21 @@ healthstatus["healthcheck"] = {"healthcheck":{"message":"Initial","nextcheck":ne
 {% for section in healthcheck.healthchecksections %}
 healthstatus['{{section.sectionid}}'] = {}
     {% for service in section.healthcheckservices %}
+        {% if service.healthstatus %}
 healthstatus['{{section.sectionid}}']['{{service.serviceid}}'] = {"checkstart":"{{service.healthstatus[1][0]}}","nextcheck": new Date("{{service.healthstatus[0]}}"),"message":`Health Status : {{service.healthstatus_name}}
 Check Start Time : {{service.healthstatus_checkstart}} 
 Check End Time : {{service.healthstatus_checkend}}
 Health Status Message : {{service.healthstatus_info}}
 Next Check Time : {{service.healthstatus_nextcheck}}
 `}
+        {% else %}
+healthstatus['{{section.sectionid}}']['{{service.serviceid}}'] = {"checkstart":"","nextcheck": null,"message":`Health Status : N/A
+Check Start Time : N/A 
+Check End Time : N/A
+Health Status Message : N/A
+Next Check Time : N/A
+`}
+        {% endif %}
     {% endfor %}
 {% endfor %}
 
