@@ -16,12 +16,19 @@
   </head>
   <body>
       <form action="/healthcheck/config/publish" method="POST">
-          <h3>Publish Health Check Configuration
-          <A href="/healthcheck/config">Cancel</A>
-      </h3>
-      <input type='text' name="comments" style="width:80%" required placeholder="Publish comments"/>
-      <button type="submit" name="action" value="publish">Publish</button>
-      <pre >{{healthcheckconfig}}</pre>
+          <table class="menubar"><tr><th>
+             <A href="/healthcheck/config/edit">Config Health Check </A> -> Publish Health Check
+          </th><td style="text-aligh:right">
+            <A href="/healthcheck/config/edit">Cancel</A>
+          </td>
+            {% include 'healthcheck/inc/help.html' %}
+          </tr></table>
+          </h3>
+
+
+         <input type='text' name="comments" style="width:80%" required placeholder="Publish comments"/>
+         <button type="submit" name="action" value="publish">Publish</button>
+         <pre >{{healthcheckconfig}}</pre>
       </form>
 
   </body>

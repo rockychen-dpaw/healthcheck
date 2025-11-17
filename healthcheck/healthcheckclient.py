@@ -41,6 +41,7 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
         self._statuslist = CycleList(settings.HEALTHSTATUS_BUFFER)
         self._healthstatus_task = None
         self._wait = Event()
+        self.continuouscheck_started = False
 
     async def wait(self):
         """
@@ -93,6 +94,17 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
                             logger.error("The service({}.{}) doesn't exist".format(*data[0]))
                             continue
                         self._statuslist.add(data)
+                        self._wait.set()
+                    elif status_code == socket.RELOAD_DASHBOARD:
+                        self._statuslist.add("reload")
+                        self._wait.set()
+                    elif status_code == socket.CONTINUOUSCHECK_STARTED:
+                        self._statuslist.add("continuouscheck_started")
+                        self.continuouscheck_started = True
+                        self._wait.set()
+                    elif status_code == socket.CONTINUOUSCHECK_STOPPED:
+                        self._statuslist.add("continuouscheck_stopped")
+                        self.continuouscheck_started = False
                         self._wait.set()
                     elif status_code < 0:
                         logger.error("{}: Get a failed response: {}".format(data))

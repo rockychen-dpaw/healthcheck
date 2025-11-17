@@ -10,6 +10,13 @@
     <style>
         {% include 'healthcheck/inc/healthcheck.css' %}
     </style>
+    <script type="text/javascript">
+        {% include 'healthcheck/inc/healthcheck.js' %}
+        window.onload = function() {
+           browserside_check()
+           setTimeout(start_browserside_check,2000)
+        };
+    </script>
   </head>
   <body>
       <h3>
@@ -23,16 +30,19 @@
       {% if adminable %}
         {% if system %}
       <A  href="/healthcheck/config/systemview/{{system}}">Edit</A> | 
-      <A href="/healthcheck/config/view/{{system}}">Setting</A> 
+      <A href="/healthcheck/config/view/{{system}}">Setting</A> | 
         {% else %}
       <A target="Edit health check configuration" href="/healthcheck/config/edit">Config Health Check</A> | 
       <A target="Edit health check configuration" href="/healthcheck/config/publishhistories">Publish Histories</A> | 
-      <A href="/healthcheck/customize">Customize</A> 
+      <A href="/healthcheck/customize">Customize</A> | 
         {% endif %}
+      <A href="javascript:reload_dashboard()">Reload</A> 
       {% elif user %}
       <A href="/healthcheck/customize">Customize</A> 
       {% endif %}
-      </td></tr></table>
+      </td>
+        {% include 'healthcheck/inc/help.html' %}
+      </tr></table>
       </h3>
 
       {% include 'healthcheck/inc/healthcheckstatus.html' %}

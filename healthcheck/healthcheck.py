@@ -883,11 +883,20 @@ class HealthCheck(JsonStatusMixin):
                 basetimeout = config.get("timeout")
                 if basetimeout is not None and not isinstance(basetimeout,int):
                     basetimeout = int(str(basetimeout).strip())
-                    config["timeout"] = basetimeout
                 config["timeout"] = basetimeout
             except Exception as ex:
                 errors.append("Section {}({}): The timeout({}) is not an integer.".format(sectionindex,sectionid,config.get("timeout")))
                 continue
+
+            basemethod = config.get("method")
+            if basemethod:
+                basemethod = basemethod.upper()
+                if basemethod not in ["GET","POST","DELETE","PUT"]:
+                    errors.append("Section {}({}): The method({}) doesn't support.".format(sectionindex,sectionid,basemethod))
+                    continue
+            else:
+                basemethod = "GET"
+            config["method"] = basemethod
 
             try:
                 basehistoryexpire = config.get("historyexpire")
@@ -954,6 +963,8 @@ class HealthCheck(JsonStatusMixin):
                     for k,v in basequeryparameters.items():
                         if k not in queryparameters:
                             queryparameters[k] = v
+                        elif queryparameters[k] is None:
+                            del queryparameters[k]
                 service["queryparameters"] = queryparameters
 
                 headers = service.get("headers")
@@ -963,6 +974,8 @@ class HealthCheck(JsonStatusMixin):
                     for k,v in baseheaders.items():
                         if k not in headers:
                             headers[k] = v
+                        elif headers[k] is None:
+                            del headers[k]
                 service["headers"] = headers if headers else None
 
                 checkingtime = service.get("checkingtime")
@@ -1094,7 +1107,7 @@ class HealthCheck(JsonStatusMixin):
                         errors.append("Service {0}({1}).{2}({3}): The method({}) doesn't support".format(sectionindex,sectionid,serviceindex,serviceid,method))
                         continue
                 else:
-                    method = "GET"
+                    method = basemethod
                 service["method"] = method
 
 
@@ -1215,7 +1228,7 @@ class HealthCheck(JsonStatusMixin):
         if not self._checkingstatus_loaded:
             self.load_checkingstatus()
         if self._continuous_check_task:
-            logger.info("The continuous health checking is already started.")
+            logger.info("{}: The continuous health checking is already started.".format(self))
             return 
         logger.info("{}: Start to run the continuous health checking".format(self))
         self._continuous_check_task = asyncio.create_task(self._continuous_check(taskcls,*args))
@@ -1278,6 +1291,7 @@ class EditingHealthCheck(HealthCheck):
         self.healthcheck = healthcheck
         self._lock = FileLock("{}.lock".format(self.configfile))
         self.load_checkingstatus()
+        self._continuouscheck_starttime = None
         
 
     def reset(self):
@@ -1294,6 +1308,22 @@ class EditingHealthCheck(HealthCheck):
             with open(self.configfile,'rb') as f:
                 configs = f.read()
             return config_hashcode != self.config_hashcode
+
+    async def continuous_check(self,*args,taskcls=BaseServiceHealthCheckTask):
+        await super().continuous_check(*args,taskcls=taskcls)
+        self._continuouscheck_starttime = utils.now()
+
+    def stop_continuous_check(self):
+        super().stop_continuous_check()
+        self._continuouscheck_starttime = None
+
+    async def _continuous_check(self,taskcls,*args):
+        if self._continuouscheck_starttime and (utils.now() - self._continuouscheck_starttime).total_seconds() > settings.EDITINGHEALTHCHECK_CONTINUOUSCHECK_MAXTIME:
+            #exceed the maximum time
+            self.stop_continuous_check()
+            return
+
+        await super()._continuous_check(taskcls,*args)
 
     def save(self,configtxt):
         """

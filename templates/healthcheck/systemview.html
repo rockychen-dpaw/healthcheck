@@ -32,7 +32,9 @@
             <button type="submit" name="action" value="save" style="padding-left:10px;padding-right:10px;">Save</button> | 
             <button type="button" onclick="window.location.href='/healthcheck/config/systemview/{{viewmeta.id}}/delete'" style="padding-left:10px;padding-right:10px">Delete</button> | 
             <button type="submit" name="action" value="cancel" style="padding-left:10px;padding-right:10px">Cancel</button>
-      </td></tr></table>
+      </td>
+        {% include 'healthcheck/inc/help.html' %}
+      </tr></table>
       </h3>
 
       {% include 'healthcheck/inc/messages.html' %}

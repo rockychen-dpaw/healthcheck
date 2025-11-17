@@ -64,6 +64,19 @@ class BaseHealthStatusSubscriptor(socket.Connection):
     async def send_healthstatus(cls,data):
         await cls._send_data([socket.HEALTHSTATUS,data])
     
+    @classmethod
+    async def reload_dashboard(cls):
+        await cls._send_data([socket.RELOAD_DASHBOARD,"OK"])
+    
+    @classmethod
+    async def continuouscheck_started(cls):
+        await cls._send_data([socket.CONTINUOUSCHECK_STARTED,"OK"])
+
+    @classmethod
+    async def continuouscheck_stopped(cls):
+        await cls._send_data([socket.CONTINUOUSCHECK_STOPPED,"OK"])
+
+
 class HealthStatusSubscriptor(BaseHealthStatusSubscriptor):
     subscriptors = []
     _lock = asyncio.Lock()
@@ -93,6 +106,11 @@ class EditingHealthStatusSubscriptor(BaseHealthStatusSubscriptor):
                 if service.get("healthstatus"):
                     await self.send([socket.INITIAL_HEALTHSTATUS,[[service.sectionid,service.serviceid],service["healthstatus"]]])
 
+        if healthcheck.editing_healthcheck.is_continuous_check_started:
+            await self.continuouscheck_started()
+        else:
+            await self.continuouscheck_stopped()
+
     @classmethod
     async def healthconfig_changed(cls):
         await cls._send_data([socket.HEALTHCONFIG_HAHSCODE,healthcheck.editing_healthcheck.config_hashcode])
@@ -117,13 +135,18 @@ class CommandConnection(socket.CommandConnection):
     START_PREVIEW_HEALTHCHECK="start_preview_healthcheck"
     STOP_PREVIEW_HEALTHCHECK="stop_preview_healthcheck"
     SAVE_EDITING_HEALTHCHECK="save_editing_healthcheck"
+    RELOAD_DASHBOARD="reload_dashboard"
     async def start_preview_healthcheck(self):
         await EditingHealthStatusSubscriptor.healthconfig_changed()
-        await healthcheck.editing_healthcheck.continuous_check(self.server,taskcls=EditingServiceHealthCheckTask)
+        if not healthcheck.editing_healthcheck.is_continuous_check_started:
+            await healthcheck.editing_healthcheck.continuous_check(self.server,taskcls=EditingServiceHealthCheckTask)
+            await EditingHealthStatusSubscriptor.continuouscheck_started()
         return [True,"OK"]
 
-    def stop_preview_healthcheck(self):
-        healthcheck.editing_healthcheck.stop_continuous_check()
+    async def stop_preview_healthcheck(self):
+        if healthcheck.editing_healthcheck.is_continuous_check_started:
+            healthcheck.editing_healthcheck.stop_continuous_check()
+            await EditingHealthStatusSubscriptor.continuouscheck_stopped()
         return [True,"OK"]
 
     async def reload_editing_healthcheck(self):
@@ -140,7 +163,11 @@ class CommandConnection(socket.CommandConnection):
             healthcheck.stop_continuous_check()  
             await HealthStatusSubscriptor.healthconfig_changed()
             await healthcheck.continuous_check(self.server,taskcls=ServiceHealthCheckTask)
-        return [True,"Tested"]
+        return [True,"OK"]
+
+    async def reload_dashboard(self):
+        await HealthStatusSubscriptor.reload_dashboard()
+        return [True,"OK"]
 
     def healthcheck(self):
         if not healthcheck.is_continuous_check_started:

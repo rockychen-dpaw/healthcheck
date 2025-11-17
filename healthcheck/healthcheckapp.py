@@ -168,6 +168,15 @@ async def dashboard(system):
 
     return await render_template("healthcheck/dashboard.html",healthcheck=healthcheckview,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck",statusstreamurl=statusstreamurl,adminable=adminable,heartbeat=settings.HEARTBEAT,user=user,system=system)
 
+@app.route("/healthcheck/reload")
+async def reload_dashboard():
+    try:
+        res = await commandclient.exec("reload_dashboard") 
+        return "OK", 200
+    except Exception as ex:
+        return "Failed to reload the dashboard.{}".format(str(ex)), 500
+
+
 @app.route("/healthcheck/healthstatusstream",defaults={'system': None})
 @app.route("/healthcheck/healthstatusstream/<system>")
 async def healthstatusstream(system):
@@ -585,6 +594,11 @@ async def editinghealthstatusstream():
         for section in healthcheck.editing_healthcheck.healthchecksections:
             for service in section.healthcheckservices:
                 yield "{}\n".format(json.dumps([[section.sectionid,service.serviceid],service.healthstatus],cls=serializers.JSONFormater)).encode()
+
+        if editinghealthstatuslistener.continuouscheck_started:
+            yield "{}\n".format(json.dumps("continuouscheck_started")).encode()
+        else:
+            yield "{}\n".format(json.dumps("continuouscheck_stopped")).encode()
 
         servicestatus = await ping()
         yield servicestatus

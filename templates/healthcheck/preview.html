@@ -10,14 +10,35 @@
         {% include 'healthcheck/inc/healthcheck.css' %}
     </style>
     <script type="text/javascript">
+        function continuouscheck_started() {
+            document.getElementById("runningstatus").innerHTML="Running..."
+            document.getElementById("button_start").disabled = true
+            document.getElementById("button_stop").disabled = false
+            start_browserside_check()
+        }
+        function continuouscheck_stopped() {
+            document.getElementById("runningstatus").innerHTML="Stopped"
+            document.getElementById("button_start").disabled = false
+            document.getElementById("button_stop").disabled = true
+            stop_browserside_check()
+
+        }
         {% include 'healthcheck/inc/healthcheck.js' %}
     </script>
   </head>
   <body>
-      <h3>DBCA Essential Systems Health Check Editing Preview
-          <button onclick="start_preview();">Start</button>
-          <button onclick="stop_preview();">Stop</button>
+      <h3>
+      <table class="menubar"><tr><th>
+       DBCA Essential Systems Health Check Editing Preview (<span id="runningstatus" style="color:blue"></span>)
+      </th><td style="text-aligh:right">
+          <button onclick="start_preview();" id="button_start">Start</button>
+          <button onclick="stop_preview();" id="button_stop">Stop</button>
+      </td>
+        {% include 'healthcheck/inc/help.html' %}
+      </tr></table>
       </h3>
+
+
       {% if message %}
       <h4 style="color:red;white-space:pre;">{{message}}<h4>
       {% endif %}

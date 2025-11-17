@@ -73,16 +73,35 @@ function browserside_check() {
     });
 }
 
+let browserside_check_task = null
 
 function start_browserside_check(){
-   browserside_check()
-   setInterval(browserside_check,{{nextcheck_checkinterval}})
-
+   if (browserside_check_task === null ) {
+       browserside_check_task = setInterval(browserside_check,{{nextcheck_checkinterval}})
+    }
 }
 
- window.onload = function() {
-     setTimeout(start_browserside_check,2000)
-};
+function stop_browserside_check(){
+    if (browserside_check_task === null ) {
+        return
+    }
+    clearInterval(browserside_check_task)
+}
+
+
+if (typeof continuouscheck_started === "function") {
+    _continuouscheck_started = continuouscheck_started
+} else {
+    function _continuouscheck_started() {
+    }
+}
+
+if (typeof continuouscheck_stopped === "function") {
+    _continuouscheck_stopped = continuouscheck_stopped
+} else {
+    function _continuouscheck_stopped() {
+    }
+}
 
 function fetch_healthstatus() {
     connected = false
@@ -126,8 +145,14 @@ function fetch_healthstatus() {
               for(i = 0;i < datas.length - 1;i++) {
                   try{
                       datas[i] = JSON.parse(datas[i])
-                      if (datas[i] == "reload") {
-                          window.location.reload(true);
+                      if (typeof datas[i] == "string") {
+                          if (datas[i] === "reload") {
+                              window.location.reload(true);
+                          } else if (datas[i] === "continuouscheck_started") {
+                              _continuouscheck_started()
+                          } else if (datas[i] === "continuouscheck_stopped") {
+                              _continuouscheck_stopped()
+                          }
                           continue
                       }
                       if (datas[i][1] === null) {
