@@ -2,13 +2,11 @@ function process_messages(messages) {
     if (typeof messages === "string") {
         messages = [messages]
     }
-    console.log(typeof messages)
-    console.log(messages)
     errorObj = document.getElementById("errors")
     if (errorObj) {
         errorObj.innerHTML = "<li>" + messages.join("</li><li>") + "</li>"
     } else {
-        alert(messages.join("\n"));
+        console.log(messages.join("\n"));
     }
 }
 function clear_messages(messages) {
