@@ -1079,6 +1079,7 @@ class HealthCheck(JsonStatusMixin):
                         else:
                             service["healthchecks"][key] = [checks.init_conds(service["healthchecks"][key].get("condition")),checks.get_message_factory(service["healthchecks"][key].get('message'))]
                     except Exception as ex:
+                        traceback.print_exc()
                         errors.append("Service {0}({1}).{2}({3}): The config({4}) in healthchecks is in valid.{5}: {6}".format(sectionindex,sectionid,serviceindex,serviceid,key,ex.__class__.__name__,str(ex)))
                         continue
     

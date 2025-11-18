@@ -49,6 +49,13 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
         """
         await self._wait.wait()
 
+    async def close(self):
+        await super().close()
+        if self.continuouscheck_started:
+            self._statuslist.add("continuouscheck_stopped")
+            self.continuouscheck_started = False
+            self._wait.set()
+
     async def shutdown(self):
         if not self._healthstatus_task:
             return

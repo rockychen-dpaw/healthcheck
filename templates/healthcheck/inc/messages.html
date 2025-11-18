@@ -1,7 +1,7 @@
 {% if messages %}
-<ul>
+<ul id="errors" style="color:red; font-weight:bold;">
 {% for msg in messages %}
-<li><span style="color:red; font-weight:bold;">{{msg}}<span></li>
+<li>{{msg}}</li>
 {% endfor %}
 </ul>
 {% endif %}

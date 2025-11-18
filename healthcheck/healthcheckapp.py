@@ -65,7 +65,7 @@ async def ping():
     start = utils.now()
     nextcheck = start + timedelta(seconds = settings.HEARTBEAT) 
     try:
-        res = await commandclient.exec("healthcheck",0) 
+        res = await commandclient.exec("healthcheck",1) 
         msg = res[1]
         status = "green" if res[0] else "red"
     except Exception as ex:
@@ -78,7 +78,7 @@ async def ping():
 @app.route("/healthcheck/ping")
 async def healthcheck_ping():
     try:
-        res = await commandclient.exec("healthcheck",0) 
+        res = await commandclient.exec("healthcheck",1) 
         msg = res[1]
         status = 200 if res[0] else 500
     except Exception as ex:
@@ -171,7 +171,7 @@ async def dashboard(system):
 @app.route("/healthcheck/reload")
 async def reload_dashboard():
     try:
-        res = await commandclient.exec("reload_dashboard") 
+        res = await commandclient.exec("reload_dashboard",1) 
         return "OK", 200
     except Exception as ex:
         return "Failed to reload the dashboard.{}".format(str(ex)), 500
@@ -377,7 +377,7 @@ async def edit_healthcheck():
                 raise Exception("Action({}) Not Support".format(action))
 
             if changed:
-                await commandclient.exec("reload_editing_healthcheck") 
+                await commandclient.exec("reload_editing_healthcheck",1) 
 
             msg = None
         except Exception as ex:
@@ -412,7 +412,7 @@ async def publish_healthcheck():
                 raise Exception("Action({}) Not Support".format(action))
 
             if changed:
-                await commandclient.exec("reload_healthcheck") 
+                await commandclient.exec("reload_healthcheck",1) 
 
             return redirect("/healthcheck/config/publishhistories")
 
@@ -444,7 +444,7 @@ async def rollback():
             changed = healthcheck.rollback(configfile)
 
         if changed:
-            await commandclient.exec("reload_healthcheck") 
+            await commandclient.exec("reload_healthcheck",1) 
 
         return redirect("/healthcheck/dashboard")
     except Exception as ex:
@@ -461,18 +461,18 @@ async def preview_editing_healthcheck():
         return "Not Authorized", 403
 
     try:
-        result = await commandclient.exec("start_preview_healthcheck")
+        result = await commandclient.exec("start_preview_healthcheck",1)
         if result[0]:
             msg = None
         else:
-            msg = result[1]
+            msg = [result[1]]
     except Exception as ex:
         traceback.print_exc()
-        msg = str(ex)
+        msg = [str(ex)]
 
     healthservice_nextcheck = utils.now() + timedelta(seconds=settings.HEARTBEAT + 1)
     healthservice_nextcheck = int(healthservice_nextcheck.timestamp()) * 1000
-    return await render_template("healthcheck/preview.html",healthcheck=healthcheck.editing_healthcheck,message=msg,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck/config",statusstreamurl="/healthcheck/config/healthstatusstream",heartbeat=settings.HEARTBEAT)
+    return await render_template("healthcheck/preview.html",healthcheck=healthcheck.editing_healthcheck,messages=msg,healthservice_nextcheck=healthservice_nextcheck,nextcheck_timeout=settings.NEXTCHECK_TIMEOUT,nextcheck_checkinterval=settings.NEXTCHECK_CHECKINTERVAL,baseurl="/healthcheck/config",statusstreamurl="/healthcheck/config/healthstatusstream",heartbeat=settings.HEARTBEAT)
 
 @app.route("/healthcheck/config/history/<sectionid>/<serviceid>",defaults={'pageid': ""})
 @app.route("/healthcheck/config/history/<sectionid>/<serviceid>/<pageid>")
@@ -548,15 +548,15 @@ async def start_preview_editing_healthcheck():
         return "Not Authorized", 403
 
     try:
-        result = await commandclient.exec("start_preview_healthcheck")
+        result = await commandclient.exec("start_preview_healthcheck",1)
         if result[0]:
             msg = "OK"
         else:
             msg = result[1]
         return msg
     except Exception as ex:
-        msg = str(ex)
-        return Response(msg,status="400")
+        msg = "Failed to start editing health check preview. {}".format(str(ex))
+        return msg,400
 
 @app.route("/healthcheck/config/preview/stop",methods=["GET"])
 async def stop_preview_editing_healthcheck():
@@ -565,15 +565,15 @@ async def stop_preview_editing_healthcheck():
         return "Not Authorized", 403
 
     try:
-        result = await commandclient.exec("stop_preview_healthcheck")
+        result = await commandclient.exec("stop_preview_healthcheck",1)
         if result[0]:
             msg = "OK"
         else:
             msg = result[1]
         return msg
     except Exception as ex:
-        msg = str(ex)
-        return Response(msg,status="400")
+        msg = "Failed to stop editing health check preview. {}".format(str(ex))
+        return msg,400
 
 
 @app.route("/healthcheck/json",defaults={'system': None})

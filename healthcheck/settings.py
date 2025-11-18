@@ -58,7 +58,7 @@ AUTH2_PERMCACHE_TIMEOUT = int(os.environ.get("AUTH2_PERMCACHE_TIMEOUT",300))  # 
 
 HEALTHCHECK_PUBLISH_HISTORIES = int(os.environ.get("HEALTHCHECK_PUBLISH_HISTORIES",100))
 
-ASYNCIO_EVENTS = int(os.environ.get("ASYNCIO_EVENTS",10))
+ASYNCIO_EVENTS = int(os.environ.get("ASYNCIO_EVENTS",20))
 
 logging.config.dictConfig({
     'version': 1,

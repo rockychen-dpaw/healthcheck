@@ -53,11 +53,12 @@ class SocketClient(object):
         await self._conn.close()
         self._conn = None
 
-    async def get_connection(self,reconnect=True):
+    async def get_connection(self,reconnect_attempts=0):
         """
         Return a connection otherwise throw exception SystemShutdown or SocketClientTypeNotSupport
 
         """
+        reconnect = 0
         if not self._conn:
             while not shutdown.shutdowning and not self._conn:
                 #connect to socket server
@@ -99,11 +100,14 @@ class SocketClient(object):
                         await conn.close()
                     if isinstance(ex,(exceptions.SystemShutdown,exceptions.SocketClientTypeNotSupport)):
                         raise ex
-                    elif not reconnect:
-                        raise ex
                     else:
-                        await asyncio.sleep(settings.BLOCK_TIMEOUT)
-                        continue
+                        reconnect += 1
+                        if (reconnect_attempts == -1 or reconnect <= reconnect_attempts): 
+                            if reconnect > 1:
+                                await asyncio.sleep(settings.BLOCK_TIMEOUT)
+                            continue
+                        else:
+                            raise ex
 
         if shutdown.shutdowning:
             raise exceptions.SystemShutdown()
@@ -115,60 +119,45 @@ class SocketClient(object):
         Send the data; or throw exceptions 
 
         """
-        reconnect = 0
-
-        while not shutdown.shutdowning : 
-            try:
-                conn = await self.get_connection(False if reconnect_attempts >= 0 else True)
-                await conn.send(data)
-                return
-            except exceptions.SystemShutdown as ex:
-                await self.close()
-                raise ex
-            except exceptions.SocketClientTypeNotSupport as ex:
-                await self.close()
-                raise ex
-            except Exception as ex:
-                logger.error("{}: Failed to send data to socket server.{} : {}".format(self,ex.__class__.__name__,str(ex)))
-                await self.close()
-                reconnect += 1
-                if (reconnect_attempts == -1 or reconnect <= reconnect_attempts): 
-                    continue
-                else:
-                    raise ex
-
-        raise exceptions.SystemShutdown()
+        try:
+            conn = await self.get_connection(reconnect_attempts)
+            await conn.send(data)
+            return
+        except exceptions.SystemShutdown as ex:
+            await self.close()
+            raise ex
+        except exceptions.SocketClientTypeNotSupport as ex:
+            await self.close()
+            raise ex
+        except Exception as ex:
+            logger.error("{}: Failed to send data to socket server.{} : {}".format(self,ex.__class__.__name__,str(ex)))
+            await self.close()
+            raise ex
 
     async def receive(self,reconnect_attempts=1):
         """
         reconnect_attempts: -1 means reconnect forever
         Return the received data; or throw exceptions 
         """
-        reconnect = 0
-        while not shutdown.shutdowning: 
-            try:
-                data = None
-                conn = await self.get_connection(False if reconnect_attempts >= 0 else True)
-                data = await conn.receive()
-                logger.debug("{}: Succeed to receive the data: {}".format(self,data))
-                return data
-            except exceptions.SystemShutdown as ex:
-                raise ex
-            except exceptions.SocketClientTypeNotSupport as ex:
-                raise ex
-            except exceptions.MalformedData as ex:
-                raise ex
-            except Exception as ex:
-                if not isinstance(ex,(exceptions.ConnectionClosed,ConnectionResetError,ConnectionResetError)):
-                    logger.error("{}: Unexpected exception.\n{}".format(self,traceback.format_exc()))
-                await self.close()
-                reconnect += 1
-                if (reconnect_attempts == -1 or reconnect <= reconnect_attempts):
-                    continue
-                else:
-                    raise ex
-
-        raise exceptions.SystemShutdown()
+        try:
+            data = None
+            conn = await self.get_connection(reconnect_attempts)
+            data = await conn.receive()
+            logger.debug("{}: Succeed to receive the data: {}".format(self,data))
+            return data
+        except exceptions.SystemShutdown as ex:
+            await self.close()
+            raise ex
+        except exceptions.SocketClientTypeNotSupport as ex:
+            await self.close()
+            raise ex
+        except exceptions.MalformedData as ex:
+            raise ex
+        except Exception as ex:
+            if not isinstance(ex,(exceptions.ConnectionClosed,ConnectionResetError,ConnectionResetError)):
+                logger.error("{}: Unexpected exception.\n{}".format(self,traceback.format_exc()))
+            await self.close()
+            raise ex
 
 class CommandClient(SocketClient):
     conn_type = connectiontype.COMMAND
@@ -209,6 +198,8 @@ class CommandClient(SocketClient):
                     logger.error("{}: Unexpected exception.\n{}".format(self,str(ex)))
                     reconnect += 1
                     if (reconnect_attempts == -1 or reconnect <= reconnect_attempts): 
+                        if reconnect > 1:
+                            await asyncio.sleep(settings.BLOCK_TIMEOUT)
                         continue
                     else:
                         raise ex

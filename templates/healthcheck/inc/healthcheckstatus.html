@@ -145,6 +145,7 @@ function fetch_healthstatus() {
               for(i = 0;i < datas.length - 1;i++) {
                   try{
                       datas[i] = JSON.parse(datas[i])
+                      console.log(datas[i])
                       if (typeof datas[i] == "string") {
                           if (datas[i] === "reload") {
                               window.location.reload(true);

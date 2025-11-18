@@ -204,7 +204,7 @@ def _convert_datatype(val,dt,params=None):
                     if dt == date:
                         return datetime.strptime(val,params["pattern"]).date()
                     elif dt == datetime:
-                        return date.strptime(val,params["pattern"]).astimezone(tz=TZ)
+                        return datetime.strptime(val,params["pattern"]).astimezone(tz=TZ)
                     else:
                         raise Exception("Can't convert {} to timedelta with params({})".format(val,params))
                 else:
@@ -305,7 +305,7 @@ def _init_cond(cond):
         elif len(cond) > 4:
             raise Exception("The condition({}) is invalid.{}".format(conds,conds_help))
         cond.insert(1,None)
-    elif len(cond) >= 3 and cond[2] in operators:
+    elif len(cond) >= 3 and isinstance(cond[2],str) and cond[2] in operators:
         """
         [data category,key,operator]
         [data category,key,operator,expected_value]
@@ -331,7 +331,7 @@ def _init_cond(cond):
         """
         cond.insert(2,"==")
         cond.append(None)
-    elif len(cond) == 3 and isinstance(cond[1],str) and isinstance(cond[2],dict):
+    elif len(cond) == 3  and isinstance(cond[2],dict):
         """
         [data category,expected_value,params]
         """
@@ -340,6 +340,7 @@ def _init_cond(cond):
     else:
         raise Exception("The condition({}) is invalid.{}".format(cond,conds_help))
 
+    
 
     #validate the operands
     if cond[2] == "lambda":
@@ -400,6 +401,9 @@ def _init_cond(cond):
                 cond[4] = {"dtype":dt}
             else:
                 cond[4]["dtype"] = dt
+        else:
+            #convert the dtype to data type class object
+            cond[4]["dtype"] = eval(dt)
 
 
     return cond
@@ -536,8 +540,6 @@ def _check_cond(val,operator,expected_val=None,params=None):
         return val.endswith(expected_val)
     elif operator == "mendswith":
         return any(val.endswith(v) for v in expected_val)
-    elif operator == "contian":
-        return any((v in val) for v in expected_val)
     elif operator == "pattern":
         return True if expected_val.search(val) else False
     elif operator == "mpattern":

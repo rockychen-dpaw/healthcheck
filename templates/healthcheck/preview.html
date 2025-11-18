@@ -39,9 +39,7 @@
       </h3>
 
 
-      {% if message %}
-      <h4 style="color:red;white-space:pre;">{{message}}<h4>
-      {% endif %}
+      {% include 'healthcheck/inc/messages.html' %}
 
       {% include 'healthcheck/inc/healthcheckstatus.html' %}
 
