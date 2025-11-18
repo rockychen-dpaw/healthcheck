@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>{{healthcheck.title}}</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="DBCA Spatial Support System health checks" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" />
+    <style>
+        {% include 'healthcheck/inc/healthcheck.css' %}
+    </style>
+    <script type="text/javascript">
+        {% include 'healthcheck/inc/healthcheck.js' %}
+        window.onload = function() {
+           browserside_check()
+           setTimeout(start_browserside_check,2000)
+        };
+    </script>
+  </head>
+  <body>
+      <h3>
+      <table class="menubar"><tr><th>
+      {% if system %}
+      <A href='/healthcheck'>Home</A> ->  <A href='/healthcheck/dashboard'> Default Dashboard</A> -> {{healthcheck.title}}
+      {% else%}
+      <A href='/healthcheck'>Home</A> -> Default Dashboard
+      {% endif %}
+      </th><td style="text-aligh:right">
+      {% if adminable %}
+        {% if system %}
+      <A  href="/healthcheck/config/systemview/{{system}}">Edit</A> | 
+      <A href="/healthcheck/config/view/{{system}}">Setting</A> | 
+        {% else %}
+      <A target="Edit health check configuration" href="/healthcheck/config/edit">Config Health Check</A> | 
+      <A target="Edit health check configuration" href="/healthcheck/config/publishhistories">Publish Histories</A> | 
+      <A href="/healthcheck/customize">Customize</A> | 
+        {% endif %}
+      <A href="javascript:reload_dashboard()">Reload</A> 
+      {% elif user %}
+      <A href="/healthcheck/customize">Customize</A> 
+      {% endif %}
+      </td>
+        {% include 'healthcheck/inc/help.html' %}
+      </tr></table>
+      </h3>
+
+      {% include 'healthcheck/inc/healthcheckstatus.html' %}
+  </body>
+</html>

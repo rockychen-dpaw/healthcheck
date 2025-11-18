@@ -1,0 +1,35 @@
+import fcntl
+import os
+
+class FileLock(object):
+    def __init__(self,file):
+        self.file = file
+        self._fd = None
+
+    def lock(self):
+        if self._fd:
+            raise Exception("Already acquired the lock({})".format(self.file))
+        self._fd = open(self.file,'w')
+        fcntl.flock(self._fd.fileno(),fcntl.LOCK_EX)
+
+    def release(self):
+        if self._fd:
+            try:
+                fcntl.flock(self._fd.fileno(), fcntl.LOCK_UN)
+            finally:
+                try:
+                    self._fd.close()
+                    os.remove(self.file)
+                except Exception as ex:
+                    pass
+                finally:
+                    self._fd = None
+
+    def __enter__(self):
+        self.lock()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.release()
+        return False if exc_type else True
+
