@@ -286,7 +286,7 @@ async def customize_dashboard(system):
         except Exception as ex:
             traceback.print_exc()
             msg = str(ex)
-        if user:
+        if system:
             return redirect("/healthcheck/dashboard/{}".format(system))
         else:
             return redirect("/healthcheck/dashboard")
