@@ -65,6 +65,7 @@ AUTH2_STATUS_URL = os.environ.get("AUTH2_STATUS_URL", "https://auth2.dbca.wa.gov
 # Spatial data layer names.
 DBCA_INCIDENT_MAPPING_POLYGONS = os.environ.get("DBCA_INCIDENT_MAPPING_POLYGONS", None)
 DBCA_INCIDENT_MAPPING_LINES = os.environ.get("DBCA_INCIDENT_MAPPING_LINES", None)
+DBCA_INCIDENT_MAPPING_POINTS = os.environ.get("DBCA_INCIDENT_MAPPING_POINTS", None)
 DFES_GOING_BUSHFIRES_LAYER = os.environ.get("DFES_GOING_BUSHFIRES_LAYER", None)
 ALL_CURRENT_HOTSPOTS_LAYER = os.environ.get("ALL_CURRENT_HOTSPOTS_LAYER", None)
 LIGHTNING_24H_LAYER = os.environ.get("LIGHTNING_24H_LAYER", None)
@@ -280,7 +281,7 @@ async def get_healthcheck() -> Dict[str, Any]:
         d["success"] = False
 
     # Common parameters to send with every GetMap request to KMI Geoserver.
-    kmi_params = {
+    wms_params = {
         "service": "WMS",
         "version": "1.1.0",
         "request": "GetMap",
@@ -309,15 +310,15 @@ async def get_healthcheck() -> Dict[str, Any]:
         DBCA_LANDS_WATERS_INTEREST_LAYER,
     ]:
         if kmi_layer:
-            kmi_params["layers"] = kmi_layer
+            wms_params["layers"] = kmi_layer
             prefix = kmi_layer.split(":")[0]
             path = f"{prefix}/wms"
+            url = f"{KMI_URL}/{path}"
             try:
-                url = f"{KMI_URL}/{path}"
                 if prefix == "public":
-                    resp = httpx.get(url, params=kmi_params)
+                    resp = httpx.get(url, params=wms_params)
                 else:
-                    resp = await session.get(url, params=kmi_params)
+                    resp = await session.get(url, params=wms_params)
                 resp.raise_for_status()
                 if "ServiceExceptionReport" in str(resp.content):
                     d[kmi_layer] = False
@@ -327,6 +328,27 @@ async def get_healthcheck() -> Dict[str, Any]:
                     d[kmi_layer] = True
             except Exception:
                 d[kmi_layer] = False
+                d["success"] = False
+
+    # KB layers
+    for kb_layer in [
+        DBCA_INCIDENT_MAPPING_POLYGONS,
+        DBCA_INCIDENT_MAPPING_LINES,
+        DBCA_INCIDENT_MAPPING_POINTS,
+    ]:
+        if kb_layer:
+            wms_params["layers"] = kb_layer
+
+            try:
+                kb_resp = await get_kb_layer(kb_layer)
+                if kb_resp:
+                    d[kb_layer] = True
+                else:
+                    d[kb_layer] = False
+                    d["success"] = False
+                    d["errors"].append(f"Error querying KMI layer {kb_layer}")
+            except Exception:
+                d[kb_layer] = False
                 d["success"] = False
 
     # Auth2 status response.
@@ -448,15 +470,20 @@ async def index_legacy():
 
     output += "</p>\n<p>\n"
 
-    if data[DBCA_GOING_BUSHFIRES_LAYER]:
-        output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): OK<br>\n"
+    if data[DBCA_INCIDENT_MAPPING_POLYGONS]:
+        output += f"DBCA Incident Mapping polygons layer ({DBCA_INCIDENT_MAPPING_POLYGONS}): OK<br>\n"
     else:
-        output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): error<br>\n"
+        output += f"DBCA Incident Mapping polygons layer ({DBCA_INCIDENT_MAPPING_POLYGONS}): error<br>\n"
 
-    if data[DBCA_CONTROL_LINES_LAYER]:
-        output += f"DBCA Control Lines layer ({DBCA_CONTROL_LINES_LAYER}): OK<br>\n"
+    if data[DBCA_INCIDENT_MAPPING_LINES]:
+        output += f"DBCA Incident Mapping lines layer ({DBCA_INCIDENT_MAPPING_LINES}): OK<br>\n"
     else:
-        output += f"DBCA Control Lines ({DBCA_CONTROL_LINES_LAYER}): error<br>\n"
+        output += f"DBCA Incident Mapping lines layer ({DBCA_INCIDENT_MAPPING_LINES}): error<br>\n"
+
+    if data[DBCA_INCIDENT_MAPPING_POINTS]:
+        output += f"DBCA Incident Mapping points layer ({DBCA_INCIDENT_MAPPING_POINTS}): OK<br>\n"
+    else:
+        output += f"DBCA Incident Mapping points layer ({DBCA_INCIDENT_MAPPING_POINTS}): error<br>\n"
 
     if data[DFES_GOING_BUSHFIRES_LAYER]:
         output += f"DFES Going Bushfires layer ({DFES_GOING_BUSHFIRES_LAYER}): OK<br>\n"
@@ -780,6 +807,7 @@ async def api_kb_layer_responds(kb_layer):
     layer_map = {
         "dbca-incident-mapping-polygons": DBCA_INCIDENT_MAPPING_POLYGONS,
         "dbca-incident-mapping-lines": DBCA_INCIDENT_MAPPING_LINES,
+        "dbca-incident-mapping-points": DBCA_INCIDENT_MAPPING_POINTS,
     }
     kb_resp = await get_kb_layer(layer_map[kb_layer])
     if kb_resp:
@@ -791,8 +819,6 @@ async def api_kb_layer_responds(kb_layer):
 @app.route("/api/kmi/<kmi_layer>")
 async def api_kmi_layer_responds(kmi_layer):
     layer_map = {
-        "dbca-going-bushfires": DBCA_GOING_BUSHFIRES_LAYER,
-        "dbca-control-lines": DBCA_CONTROL_LINES_LAYER,
         "dfes-going-bushfires": DFES_GOING_BUSHFIRES_LAYER,
         "current-hotspots": ALL_CURRENT_HOTSPOTS_LAYER,
         "lightning-24h": LIGHTNING_24H_LAYER,
