@@ -53,7 +53,7 @@ COPY --from=builder_base --chown=app:app /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
   PYTHONUNBUFFERED=1
 
-COPY hypercorn.toml status.py healthcheck_liveness.sh healthcheckserver_liveness.sh start_healthcheckserver.sh ./
+COPY hypercorn.toml status.py healthcheck_liveness.sh healthcheckserver_liveness.sh ./
 COPY healthcheck ./healthcheck
 COPY static ./static
 COPY templates ./templates
