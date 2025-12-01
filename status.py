@@ -58,12 +58,13 @@ CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/re
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
 KMI_WFS_URL = f"{KMI_URL}/ows"
 KMI_WMTS_URL = f"{KMI_URL}/gwc/service/wmts"
+KB_URL = os.environ.get("KB_URL", "https://kb-api.dbca.wa.gov.au/geoserver")
 BFRS_URL = os.environ.get("BFRS_URL", "https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json")
 AUTH2_STATUS_URL = os.environ.get("AUTH2_STATUS_URL", "https://auth2.dbca.wa.gov.au/status")
 
 # Spatial data layer names.
-DBCA_GOING_BUSHFIRES_LAYER = os.environ.get("DBCA_GOING_BUSHFIRES_LAYER", None)
-DBCA_CONTROL_LINES_LAYER = os.environ.get("DBCA_CONTROL_LINES_LAYER", None)
+DBCA_INCIDENT_MAPPING_POLYGONS = os.environ.get("DBCA_INCIDENT_MAPPING_POLYGONS", None)
+DBCA_INCIDENT_MAPPING_LINES = os.environ.get("DBCA_INCIDENT_MAPPING_LINES", None)
 DFES_GOING_BUSHFIRES_LAYER = os.environ.get("DFES_GOING_BUSHFIRES_LAYER", None)
 ALL_CURRENT_HOTSPOTS_LAYER = os.environ.get("ALL_CURRENT_HOTSPOTS_LAYER", None)
 LIGHTNING_24H_LAYER = os.environ.get("LIGHTNING_24H_LAYER", None)
@@ -293,8 +294,6 @@ async def get_healthcheck() -> Dict[str, Any]:
     }
 
     for kmi_layer in [
-        DBCA_GOING_BUSHFIRES_LAYER,
-        DBCA_CONTROL_LINES_LAYER,
         DFES_GOING_BUSHFIRES_LAYER,
         ALL_CURRENT_HOTSPOTS_LAYER,
         LIGHTNING_24H_LAYER,
@@ -714,6 +713,37 @@ async def api_todays_burns():
         return ERROR_BUTTON_HTML
 
 
+WMS_PARAMS = {
+    "service": "WMS",
+    "version": "1.1.0",
+    "request": "GetMap",
+    # Bounding box covers WA:
+    "bbox": "109.3,-40.4,132.6,-6.7",
+    "width": "552",
+    "height": "768",
+    "srs": "EPSG:4326",
+    "format": "image/jpeg",
+    "layers": None,
+}
+
+
+async def get_kb_layer(kb_layer) -> bool:
+    """Query KB WMTS and return boolean if the service responds or not."""
+
+    params = WMS_PARAMS
+    params["layers"] = kb_layer
+
+    try:
+        session = await get_session()
+        resp = await session.get(f"{KB_URL}/ows", params=WMS_PARAMS)
+        resp.raise_for_status()
+        if "ServiceExceptionReport" in str(resp.content):
+            return False
+        return True
+    except:
+        return False
+
+
 async def get_kmi_layer(kmi_layer) -> bool:
     """Query KMI WMTS and return boolean if the service responds or not."""
     params = {
@@ -743,6 +773,19 @@ async def get_kmi_layer(kmi_layer) -> bool:
         return True
     except:
         return False
+
+
+@app.route("/api/kb/<kb_layer>")
+async def api_kb_layer_responds(kb_layer):
+    layer_map = {
+        "dbca-incident-mapping-polygons": DBCA_INCIDENT_MAPPING_POLYGONS,
+        "dbca-incident-mapping-lines": DBCA_INCIDENT_MAPPING_LINES,
+    }
+    kb_resp = await get_kb_layer(layer_map[kb_layer])
+    if kb_resp:
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return ERROR_BUTTON_HTML
 
 
 @app.route("/api/kmi/<kmi_layer>")
