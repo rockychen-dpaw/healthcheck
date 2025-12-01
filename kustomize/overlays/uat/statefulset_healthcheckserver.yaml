@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: healthcheckserver-statefulset
+  labels:
+    app: healthcheckserver-statefulset
+spec:
+  selector:
+    matchLabels:
+      app: healthcheckserver-statefulset
+  updateStrategy:
+    rollingUpdate:
+      partition: 0.
+    type: RollingUpdate
+  replicas: 1
+  revisionHistoryLimit: 5
+  serviceName: healthcheckserver-headless
+  template:
+    metadata:
+      labels:
+        app: healthcheckserver-statefulset
+    spec:
+      containers:
+        - name: healthcheckserver
+          image: ghcr.io/dbca-wa/healthcheck
+          imagePullPolicy: Always
+          args:
+            - python
+            - '-m'
+            - healthcheck.healthcheckserver
+          workingDir: /app
+          env:
+            - name: TZ
+              value: 'Australia/Perth'
+          resources:
+            requests:
+              memory: '64Mi'
+              cpu: '5m'
+            limits:
+              memory: '500Mi'
+              cpu: '500m'
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            privileged: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - mountPath: /tmp
+              name: tmpfs-ram
+      volumes:
+        - name: tmpfs-ram
+          emptyDir:
+            medium: 'Memory'
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 1
+      automountServiceAccountToken: false

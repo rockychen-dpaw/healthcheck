@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthcheck-deployment
+  labels:
+    app: healthcheck-deployment
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: data-vol-chown
+          image: busybox
+          command:
+            - /bin/chown
+            - -R
+            - '1000:1000'
+            - /app/data_dir
+          volumeMounts:
+            - mountPath: /app/data_dir
+              name: healthcheck-data
+      containers:
+        - name: healthcheck
+          volumeMounts:
+            - mountPath: /app/data_dir
+              name: healthcheck-data
+      volumes:
+        - name: healthcheck-data
+          persistentVolumeClaim:
+            claimName: healthcheck-data-uat
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: healthcheckserver-statefulset
+  labels:
+    app: healthcheckserver-statefulset
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: data-vol-chown
+          image: busybox
+          command:
+            - /bin/chown
+            - -R
+            - '1000:1000'
+            - /app/data_dir
+          volumeMounts:
+            - mountPath: /app/data_dir
+              name: healthcheck-data
+      containers:
+        - name: healthcheckserver
+          volumeMounts:
+            - mountPath: /app/data_dir
+              name: healthcheck-data
+      volumes:
+        - name: healthcheck-data
+          persistentVolumeClaim:
+            claimName: healthcheck-data-uat
+

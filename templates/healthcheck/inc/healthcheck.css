@@ -1,0 +1,145 @@
+body {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.button-success {
+  background: rgb(28, 184, 65);
+}
+
+.button-error {
+  background: rgb(202, 60, 60);
+}
+
+.healthstatusblock {
+    width: 90%
+}
+.sectionhealthstatusrow {
+
+}
+.sectionhealthstatuscolumn {
+
+}
+
+.sectionnamerow {
+
+}
+.sectionnamecolumn {
+
+}
+.sectionname {
+    display:block;
+    background-color: grey;
+    text-align: center;
+    font-weight: bold;
+    vertical-align: middle;
+}
+
+.servicename {
+    width: 350px;
+    height: 60px;
+    display: inline-block;
+    text-wrap: wrap;
+    text-align: right;
+    font-weight: bold;
+    vertical-align: 25px;
+}
+
+.servicehealthstatus {
+    display: inline-block;
+    height: 60px;
+    background-color: bisque;
+
+}
+.healthstatus {
+    width: 60px;
+    display: inline-block;
+    padding-left: 10px;
+    text-align: center;
+    height:60px;
+}
+.healthstatusimg {
+    width: 60px;
+    padding-left:10px;
+    height:60px;
+}
+.healthstatusbuttons {
+    width: 110px;
+    display: inline-block;
+    padding-left: 10px;
+    vertical-align: 25px;
+}
+.imgbutton {
+    width:24px;
+    height:24px;
+    vertical-align: -8px;
+}
+.healthcheckhistorytable {
+    width:90%
+}
+.healthcheckhistorytable tbody tr:nth-child(odd) {
+    background-color: #f2f2f2;
+}
+.healthcheckhistorytable tbody tr:nth-child(even) {
+     background-color: #ffffff;
+}
+.healthcheckhistorytable img{
+    width:32px;
+    height:32px;
+}
+
+.customizeblock {
+    width: 90%
+}
+.customizesectionrow {
+
+}
+.customizesectionnamerow {
+
+}
+.customizesectioncolumn {
+
+}
+.customizeserviceselect {
+    display: inline-block;
+    height: 60px;
+    background-color: bisque;
+
+}
+.customizesectionname {
+    display:block;
+    background-color: grey;
+    text-align: center;
+    font-weight: bold;
+    vertical-align: middle;
+}
+.customizeservicename {
+    width: 350px;
+    height: 60px;
+    display: inline-block;
+    text-wrap: wrap;
+    text-align: right;
+    font-weight: bold;
+    vertical-align: -22px;
+}
+
+
+.customizeselect {
+    width: 40px;
+    display: inline-block;
+    padding-left: 10px;
+    text-align: center;
+    height:60px;
+    vertical-align: -22px;
+}
+
+table.menubar  {
+    width:90%;
+    border:none;
+}
+table.menubar th {
+    text-align:left;
+}
+table.menubar td {
+    text-align:right;
+}
