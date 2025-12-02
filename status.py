@@ -63,6 +63,7 @@ KB_WFS_URL = f"{KB_URL}/ows"
 KB_WMTS_URL = f"{KB_URL}/gwc/service/wmts"
 BFRS_URL = os.environ.get("BFRS_URL", "https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json")
 AUTH2_STATUS_URL = os.environ.get("AUTH2_STATUS_URL", "https://auth2.dbca.wa.gov.au/status")
+SSS_URL = os.environ.get("SSS_URL", "https://sss.dbca.wa.gov.au/api/account.json")
 
 # Spatial data layer names.
 DBCA_INCIDENT_MAPPING_POLYGONS = os.environ.get("DBCA_INCIDENT_MAPPING_POLYGONS", None)
@@ -333,6 +334,16 @@ async def get_healthcheck() -> Dict[str, Any]:
     else:
         # No response from this endpoint triggers failure.
         d["auth2_status"] = None
+        d["success"] = False
+
+    # SSS status response.
+    source_desc = "SSS API endpoint"
+    data = await fetch_data(session, SSS_URL, d["errors"], source_desc)
+    if data:
+        d["sss_status"] = True
+    else:
+        # No response from this endpoint triggers failure.
+        d["sss_status"] = None
         d["success"] = False
 
     return d
@@ -684,6 +695,18 @@ async def api_auth2_status():
 
     try:
         resp = await session.get(AUTH2_STATUS_URL)
+        resp.raise_for_status()
+        return "<button class='pure-button button-success'>OK</button>"
+    except:
+        return ERROR_BUTTON_HTML
+
+
+@app.route("/api/sss-status")
+async def api_sss_status():
+    session = await get_session()
+
+    try:
+        resp = await session.get(SSS_URL)
         resp.raise_for_status()
         return "<button class='pure-button button-success'>OK</button>"
     except:
