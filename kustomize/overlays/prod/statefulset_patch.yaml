@@ -1,7 +1,7 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: healthcheck-deployment
+  name: healthcheckserver-statefulset
 spec:
   template:
     spec:
@@ -9,9 +9,19 @@ spec:
         - name: healthcheck-data
           persistentVolumeClaim:
             claimName: healthcheck-data-prod
+      initContainers:
+        - name: data-vol-chown
+          image: busybox
+          command:
+            - /bin/chown
+            - -R
+            - '1000:1000'
+            - /app/data_dir
+          volumeMounts:
+            - mountPath: /app/data_dir
+              name: healthcheck-data
       containers:
-        - name: healthcheck
-          imagePullPolicy: IfNotPresent
+        - name: healthcheckserver
           envFrom:
             - secretRef:
                 name: healthcheck-env-prod
