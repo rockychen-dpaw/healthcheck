@@ -14,7 +14,7 @@ ENV UV_LINK_MODE=copy \
   UV_PYTHON_DOWNLOADS=never \
   UV_PROJECT_ENVIRONMENT=/app/.venv
 
-COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /bin/
 
 # Since there's no point in shipping lock files, we move them
 # into a directory that is NOT copied into the runtime image.
@@ -53,7 +53,7 @@ COPY --from=builder_base --chown=app:app /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
   PYTHONUNBUFFERED=1
 
-COPY hypercorn.toml status.py healthcheck_liveness.sh healthcheckserver_liveness.sh start_healthcheckserver.sh ./
+COPY hypercorn.toml status.py healthcheck_liveness.sh healthcheckserver_liveness.sh ./
 COPY healthcheck ./healthcheck
 COPY static ./static
 COPY templates ./templates

@@ -1,24 +1,29 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: healthcheck-deployment
+  name: healthcheckserver-statefulset
   labels:
-    app: healthcheck-deployment
+    app: healthcheckserver-statefulset
 spec:
   selector:
     matchLabels:
-      app: healthcheck-deployment
-  strategy:
-    type: RollingUpdate
+      app: healthcheckserver-statefulset
+  replicas: 1
+  serviceName: healthcheckserver-headless
   template:
     metadata:
       labels:
-        app: healthcheck-deployment
+        app: healthcheckserver-statefulset
     spec:
       containers:
-        - name: healthcheck
+        - name: healthcheckserver
           image: ghcr.io/dbca-wa/healthcheck
           imagePullPolicy: Always
+          args:
+            - python
+            - '-m'
+            - healthcheck.healthcheckserver
+          workingDir: /app
           env:
             - name: TZ
               value: 'Australia/Perth'
@@ -27,26 +32,8 @@ spec:
               memory: '64Mi'
               cpu: '5m'
             limits:
-              memory: '2048Mi'
+              memory: '500Mi'
               cpu: '500m'
-          livenessProbe:
-            httpGet:
-              path: /livez
-              port: 8080
-              scheme: HTTP
-            periodSeconds: 15
-            successThreshold: 1
-            failureThreshold: 3
-            timeoutSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: 8080
-              scheme: HTTP
-            periodSeconds: 15
-            successThreshold: 1
-            failureThreshold: 3
-            timeoutSeconds: 10
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
@@ -64,7 +51,7 @@ spec:
           emptyDir:
             medium: 'Memory'
       restartPolicy: Always
-      terminationGracePeriodSeconds: 180
+      terminationGracePeriodSeconds: 1
       automountServiceAccountToken: false
       tolerations:
         - key: arch

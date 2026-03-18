@@ -4,8 +4,6 @@ nameSuffix: -prod
 resources:
   - ../../base
   - ingress.yaml
-  - deployment_hpa.yaml
-  - pdb.yaml
 secretGenerator:
   - name: healthcheck-env
     type: Opaque
@@ -19,8 +17,8 @@ labels:
       variant: prod
 patches:
   - path: deployment_patch.yaml
-  - path: deployment_hpa_patch.yaml
   - path: service_patch.yaml
+  - path: statefulset_patch.yaml
 images:
   - name: ghcr.io/dbca-wa/healthcheck
-    newTag: 1.3.6
+    newTag: 1.3.7

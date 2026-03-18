@@ -58,12 +58,17 @@ CSW_API = os.environ.get("CSW_API", "https://csw.dbca.wa.gov.au/catalogue/api/re
 KMI_URL = os.environ.get("KMI_URL", "https://kmi.dbca.wa.gov.au/geoserver")
 KMI_WFS_URL = f"{KMI_URL}/ows"
 KMI_WMTS_URL = f"{KMI_URL}/gwc/service/wmts"
+KB_URL = os.environ.get("KB_URL", "https://kb-api.dbca.wa.gov.au/geoserver")
+KB_WFS_URL = f"{KB_URL}/ows"
+KB_WMTS_URL = f"{KB_URL}/gwc/service/wmts"
 BFRS_URL = os.environ.get("BFRS_URL", "https://bfrs.dbca.wa.gov.au/api/v1/profile/?format=json")
 AUTH2_STATUS_URL = os.environ.get("AUTH2_STATUS_URL", "https://auth2.dbca.wa.gov.au/status")
+SSS_URL = os.environ.get("SSS_URL", "https://sss.dbca.wa.gov.au/api/account.json")
 
 # Spatial data layer names.
-DBCA_GOING_BUSHFIRES_LAYER = os.environ.get("DBCA_GOING_BUSHFIRES_LAYER", None)
-DBCA_CONTROL_LINES_LAYER = os.environ.get("DBCA_CONTROL_LINES_LAYER", None)
+DBCA_INCIDENT_MAPPING_POLYGONS = os.environ.get("DBCA_INCIDENT_MAPPING_POLYGONS", None)
+DBCA_INCIDENT_MAPPING_LINES = os.environ.get("DBCA_INCIDENT_MAPPING_LINES", None)
+DBCA_INCIDENT_MAPPING_POINTS = os.environ.get("DBCA_INCIDENT_MAPPING_POINTS", None)
 DFES_GOING_BUSHFIRES_LAYER = os.environ.get("DFES_GOING_BUSHFIRES_LAYER", None)
 ALL_CURRENT_HOTSPOTS_LAYER = os.environ.get("ALL_CURRENT_HOTSPOTS_LAYER", None)
 LIGHTNING_24H_LAYER = os.environ.get("LIGHTNING_24H_LAYER", None)
@@ -251,23 +256,6 @@ async def get_healthcheck() -> Dict[str, Any]:
         d["todays_burns_count"] = None
         d["success"] = False
 
-    # KMI WMTS GetCapabilities endpoint.
-    try:
-        resp = await session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
-        if not resp.status_code == 200:
-            resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        ns = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
-        # Parse the XML response.
-        layers = root.findall(".//wmts:Layer", ns)
-        d["kmi_wmts_layer_count"] = len(layers)
-    except Exception as e:
-        LOGGER.warning("Error querying KMI WMTS layer count")
-        LOGGER.warning(e)
-        d["errors"].append("Error querying KMI WMTS layer count")
-        d["kmi_wmts_layer_count"] = None
-        d["success"] = False
-
     # BFRS API response.
     source_desc = "BFRS API endpoint"
     data = await fetch_data(session, BFRS_URL, d["errors"], source_desc)
@@ -279,46 +267,23 @@ async def get_healthcheck() -> Dict[str, Any]:
         d["success"] = False
 
     # Common parameters to send with every GetMap request to KMI Geoserver.
-    kmi_params = {
-        "service": "WMS",
-        "version": "1.1.0",
-        "request": "GetMap",
-        # Bounding box covers WA:
-        "bbox": "109.3,-40.4,132.6,-6.7",
-        "width": "552",
-        "height": "768",
-        "srs": "EPSG:4326",
-        "format": "image/jpeg",
-        "layers": None,
-    }
+    wms_params = WMS_PARAMS
 
     for kmi_layer in [
-        DBCA_GOING_BUSHFIRES_LAYER,
-        DBCA_CONTROL_LINES_LAYER,
-        DFES_GOING_BUSHFIRES_LAYER,
-        ALL_CURRENT_HOTSPOTS_LAYER,
-        LIGHTNING_24H_LAYER,
-        LIGHTNING_24_48H_LAYER,
-        LIGHTNING_48_72H_LAYER,
-        FUEL_AGE_1_6Y_LAYER,
-        FUEL_AGE_NONFOREST_1_6Y_LAYER,
         COG_BASEMAP_LAYER,
         STATE_BASEMAP_LAYER,
-        DBCA_BURN_PROGRAM_LAYER,
         DAILY_ACTIVE_BURNS_LAYER,
-        DBCA_LANDS_WATERS_LAYER,
-        DBCA_LANDS_WATERS_INTEREST_LAYER,
     ]:
         if kmi_layer:
-            kmi_params["layers"] = kmi_layer
+            wms_params["layers"] = kmi_layer
             prefix = kmi_layer.split(":")[0]
             path = f"{prefix}/wms"
+            url = f"{KMI_URL}/{path}"
             try:
-                url = f"{KMI_URL}/{path}"
                 if prefix == "public":
-                    resp = httpx.get(url, params=kmi_params)
+                    resp = httpx.get(url, params=wms_params)
                 else:
-                    resp = await session.get(url, params=kmi_params)
+                    resp = await session.get(url, params=wms_params, timeout=30)
                 resp.raise_for_status()
                 if "ServiceExceptionReport" in str(resp.content):
                     d[kmi_layer] = False
@@ -330,6 +295,37 @@ async def get_healthcheck() -> Dict[str, Any]:
                 d[kmi_layer] = False
                 d["success"] = False
 
+    # KB layers
+    for kb_layer in [
+        DBCA_INCIDENT_MAPPING_POLYGONS,
+        DBCA_INCIDENT_MAPPING_LINES,
+        DBCA_INCIDENT_MAPPING_POINTS,
+        DFES_GOING_BUSHFIRES_LAYER,
+        ALL_CURRENT_HOTSPOTS_LAYER,
+        LIGHTNING_24H_LAYER,
+        LIGHTNING_24_48H_LAYER,
+        LIGHTNING_48_72H_LAYER,
+        FUEL_AGE_1_6Y_LAYER,
+        FUEL_AGE_NONFOREST_1_6Y_LAYER,
+        DBCA_BURN_PROGRAM_LAYER,
+        DBCA_LANDS_WATERS_LAYER,
+        DBCA_LANDS_WATERS_INTEREST_LAYER,
+    ]:
+        if kb_layer:
+            wms_params["layers"] = kb_layer
+
+            try:
+                kb_resp = await get_kb_layer(kb_layer)
+                if kb_resp:
+                    d[kb_layer] = True
+                else:
+                    d[kb_layer] = False
+                    d["success"] = False
+                    d["errors"].append(f"Error querying KMI layer {kb_layer}")
+            except Exception:
+                d[kb_layer] = False
+                d["success"] = False
+
     # Auth2 status response.
     source_desc = "Auth2 status API endpoint"
     data = await fetch_data(session, AUTH2_STATUS_URL, d["errors"], source_desc)
@@ -338,6 +334,16 @@ async def get_healthcheck() -> Dict[str, Any]:
     else:
         # No response from this endpoint triggers failure.
         d["auth2_status"] = None
+        d["success"] = False
+
+    # SSS status response.
+    source_desc = "SSS API endpoint"
+    data = await fetch_data(session, SSS_URL, d["errors"], source_desc)
+    if data:
+        d["sss_status"] = True
+    else:
+        # No response from this endpoint triggers failure.
+        d["sss_status"] = None
         d["success"] = False
 
     return d
@@ -437,27 +443,33 @@ async def index_legacy():
     else:
         output += "Today's burns count (KMI): error<br>\n"
 
-    if data["kmi_wmts_layer_count"] and data["kmi_wmts_layer_count"]:  # Should be >0
-        output += f"KMI WMTS layer count: {data['kmi_wmts_layer_count']}<br>\n"
-    else:
-        output += "KMI WMTS GetCapabilities: error<br>\n"
-
     if data["bfrs_profile_api_endpoint"]:
         output += "BFRS profile API endpoint: OK<br>\n"
     else:
         output += "BFRS profile API endpoint: error<br>\n"
 
+    if data["auth2_status"]:
+        output += "AUTH2 status: OK<br>\n"
+    else:
+        output += "AUTH2 status: error<br>\n"
+
     output += "</p>\n<p>\n"
 
-    if data[DBCA_GOING_BUSHFIRES_LAYER]:
-        output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): OK<br>\n"
+    # KB layers
+    if data[DBCA_INCIDENT_MAPPING_POLYGONS]:
+        output += f"DBCA Incident Mapping polygons layer ({DBCA_INCIDENT_MAPPING_POLYGONS}): OK<br>\n"
     else:
-        output += f"DBCA Going Bushfires layer ({DBCA_GOING_BUSHFIRES_LAYER}): error<br>\n"
+        output += f"DBCA Incident Mapping polygons layer ({DBCA_INCIDENT_MAPPING_POLYGONS}): error<br>\n"
 
-    if data[DBCA_CONTROL_LINES_LAYER]:
-        output += f"DBCA Control Lines layer ({DBCA_CONTROL_LINES_LAYER}): OK<br>\n"
+    if data[DBCA_INCIDENT_MAPPING_LINES]:
+        output += f"DBCA Incident Mapping lines layer ({DBCA_INCIDENT_MAPPING_LINES}): OK<br>\n"
     else:
-        output += f"DBCA Control Lines ({DBCA_CONTROL_LINES_LAYER}): error<br>\n"
+        output += f"DBCA Incident Mapping lines layer ({DBCA_INCIDENT_MAPPING_LINES}): error<br>\n"
+
+    if data[DBCA_INCIDENT_MAPPING_POINTS]:
+        output += f"DBCA Incident Mapping points layer ({DBCA_INCIDENT_MAPPING_POINTS}): OK<br>\n"
+    else:
+        output += f"DBCA Incident Mapping points layer ({DBCA_INCIDENT_MAPPING_POINTS}): error<br>\n"
 
     if data[DFES_GOING_BUSHFIRES_LAYER]:
         output += f"DFES Going Bushfires layer ({DFES_GOING_BUSHFIRES_LAYER}): OK<br>\n"
@@ -494,25 +506,10 @@ async def index_legacy():
     else:
         output += f"Fuel age non forest 1-6+ years layer ({FUEL_AGE_NONFOREST_1_6Y_LAYER}): error<br>\n"
 
-    if data[COG_BASEMAP_LAYER]:
-        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): OK<br>\n"
-    else:
-        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): error<br>\n"
-
-    if data[STATE_BASEMAP_LAYER]:
-        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): OK<br>\n"
-    else:
-        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): error<br>\n"
-
     if data[DBCA_BURN_PROGRAM_LAYER]:
         output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): OK<br>\n"
     else:
         output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): error<br>\n"
-
-    if data[DAILY_ACTIVE_BURNS_LAYER]:
-        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): OK<br>\n"
-    else:
-        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): error<br>\n"
 
     if data[DBCA_LANDS_WATERS_LAYER]:
         output += f"DBCA legislated lands and waters layer ({DBCA_LANDS_WATERS_LAYER}): OK<br>\n"
@@ -526,12 +523,24 @@ async def index_legacy():
 
     output += "</p>\n<p>\n"
 
-    if data["auth2_status"]:
-        output += "AUTH2 status: OK<br>\n"
+    # KMI layers
+    if data[COG_BASEMAP_LAYER]:
+        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): OK<br>\n"
     else:
-        output += "AUTH2 status: error<br>\n"
+        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): error<br>\n"
+
+    if data[STATE_BASEMAP_LAYER]:
+        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): OK<br>\n"
+    else:
+        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): error<br>\n"
+
+    if data[DAILY_ACTIVE_BURNS_LAYER]:
+        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): OK<br>\n"
+    else:
+        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): error<br>\n"
 
     output += "</p>\n<p>\n"
+
     if data["success"]:
         output += "<strong>Finished checks, healthcheck succeeded!</strong>"
     else:
@@ -692,6 +701,18 @@ async def api_auth2_status():
         return ERROR_BUTTON_HTML
 
 
+@app.route("/api/sss-status")
+async def api_sss_status():
+    session = await get_session()
+
+    try:
+        resp = await session.get(SSS_URL)
+        resp.raise_for_status()
+        return "<button class='pure-button button-success'>OK</button>"
+    except:
+        return ERROR_BUTTON_HTML
+
+
 @app.route("/api/todays-burns")
 async def api_todays_burns():
     params = {
@@ -714,6 +735,45 @@ async def api_todays_burns():
         return ERROR_BUTTON_HTML
 
 
+WMS_PARAMS = {
+    "service": "WMS",
+    "version": "1.1.0",
+    "request": "GetMap",
+    # Bounding box covers WA:
+    "bbox": "109.3,-40.4,132.6,-6.7",
+    "width": "552",
+    "height": "768",
+    "srs": "EPSG:4326",
+    "format": "image/jpeg",
+}
+WMTS_PARAMS = {
+    "service": "WMTS",
+    "version": "1.0.0",
+    "request": "GetTile",
+    # These matrix settings are most of the extent of Western Australia.
+    "tilematrixset": "mercator",
+    "tilematrix": "mercator:4",
+    "tilecol": "13",
+    "tilerow": "9",
+    "format": "image/png",
+}
+
+
+async def get_kb_layer(kb_layer) -> bool:
+    """Query KB WMTS and return boolean if the service responds or not."""
+    params = WMTS_PARAMS
+    params["layer"] = kb_layer
+    session = await get_session()
+
+    try:
+        resp = await session.get(KB_WMTS_URL, params=params, timeout=30)
+        if "ServiceExceptionReport" in str(resp.content):
+            return False
+        return True
+    except:
+        return False
+
+
 async def get_kmi_layer(kmi_layer) -> bool:
     """Query KMI WMTS and return boolean if the service responds or not."""
     params = {
@@ -733,10 +793,10 @@ async def get_kmi_layer(kmi_layer) -> bool:
 
     try:
         if prefix == "public":
-            resp = httpx.get(KMI_WMTS_URL, params=params)
+            resp = httpx.get(KMI_WMTS_URL, params=params, timeout=30)
         else:
             session = await get_session()
-            resp = await session.get(KMI_WMTS_URL, params=params)
+            resp = await session.get(KMI_WMTS_URL, params=params, timeout=30)
         resp.raise_for_status()
         if "ServiceExceptionReport" in str(resp.content):
             return False
@@ -745,11 +805,12 @@ async def get_kmi_layer(kmi_layer) -> bool:
         return False
 
 
-@app.route("/api/kmi/<kmi_layer>")
-async def api_kmi_layer_responds(kmi_layer):
+@app.route("/api/kb/<kb_layer>")
+async def api_kb_layer_responds(kb_layer):
     layer_map = {
-        "dbca-going-bushfires": DBCA_GOING_BUSHFIRES_LAYER,
-        "dbca-control-lines": DBCA_CONTROL_LINES_LAYER,
+        "dbca-incident-mapping-polygons": DBCA_INCIDENT_MAPPING_POLYGONS,
+        "dbca-incident-mapping-lines": DBCA_INCIDENT_MAPPING_LINES,
+        "dbca-incident-mapping-points": DBCA_INCIDENT_MAPPING_POINTS,
         "dfes-going-bushfires": DFES_GOING_BUSHFIRES_LAYER,
         "current-hotspots": ALL_CURRENT_HOTSPOTS_LAYER,
         "lightning-24h": LIGHTNING_24H_LAYER,
@@ -757,12 +818,23 @@ async def api_kmi_layer_responds(kmi_layer):
         "lightning-48-72h": LIGHTNING_48_72H_LAYER,
         "fuel-age-1-6y": FUEL_AGE_1_6Y_LAYER,
         "fuel-age-nonforest-1-6y": FUEL_AGE_NONFOREST_1_6Y_LAYER,
-        "cog-basemap": COG_BASEMAP_LAYER,
-        "state-basemap": STATE_BASEMAP_LAYER,
         "dbca-burn-program": DBCA_BURN_PROGRAM_LAYER,
-        "daily-active-burns": DAILY_ACTIVE_BURNS_LAYER,
         "dbca-lands-waters": DBCA_LANDS_WATERS_LAYER,
         "dbca-lands-waters-interest": DBCA_LANDS_WATERS_INTEREST_LAYER,
+    }
+    kb_resp = await get_kb_layer(layer_map[kb_layer])
+    if kb_resp:
+        return "<button class='pure-button button-success'>OK</button>"
+    else:
+        return ERROR_BUTTON_HTML
+
+
+@app.route("/api/kmi/<kmi_layer>")
+async def api_kmi_layer_responds(kmi_layer):
+    layer_map = {
+        "cog-basemap": COG_BASEMAP_LAYER,
+        "state-basemap": STATE_BASEMAP_LAYER,
+        "daily-active-burns": DAILY_ACTIVE_BURNS_LAYER,
     }
     kmi_resp = await get_kmi_layer(layer_map[kmi_layer])
     if kmi_resp:

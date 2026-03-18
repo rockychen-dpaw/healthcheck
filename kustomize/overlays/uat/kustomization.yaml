@@ -3,10 +3,7 @@ kind: Kustomization
 nameSuffix: -uat
 resources:
   - ../../base
-  - statefulset_healthcheckserver.yaml
-  - service_healthcheckserver.yaml
   - ingress.yaml
-  - data_pvc.yaml
 secretGenerator:
   - name: healthcheck-env
     type: Opaque
@@ -21,6 +18,4 @@ labels:
 patches:
   - path: deployment_patch.yaml
   - path: service_patch.yaml
-  - path: data_pvc_patch.yaml
-  - path: service_healthcheckserver_patch.yaml
-  - path: statefulset_healthcheckserver_patch.yaml
+  - path: statefulset_patch.yaml
