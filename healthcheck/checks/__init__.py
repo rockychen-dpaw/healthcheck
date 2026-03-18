@@ -224,6 +224,8 @@ def _init_key(key):
     """
      convert the key to a list of  sublist with 2 members: [True for property; False for list index, property or index]
     """
+    if not key:
+        return None
     keys = [[True,prop.strip()] for prop in key.split(".")]
     for i in range(len(keys) - 1,-1,-1):
         prop = keys[i][1]
