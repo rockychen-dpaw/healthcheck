@@ -1680,18 +1680,22 @@ class ReleasedHealthCheck(HealthCheck):
             self._viewsfile = os.path.join(self.systemviewsdir,"systemviews.json")
         return self._viewsfile
 
-    _systemviews = [None,None,None]
+    _systemviews = [None,None,[]]
     @property 
     def systemviews(self):
         if not os.path.exists(self.systemviewsfile):
-            self._systemviews = [None,None,None]
-            return []
+            self._systemviews[0] = None
+            self._systemviews[1] = None
+            self._systemviews[2].clear()
+            return self._systemviews[2]
 
         file_size = os.path.getsize(self.systemviewsfile)
         if not file_size:
             utils.remove_file(self.systemviewsfile)
-            self._systemviews = [None,None,None]
-            return []
+            self._systemviews[0] = None
+            self._systemviews[1] = None
+            self._systemviews[2].clear()
+            return self._systemviews[2]
 
         file_mtime = os.path.getmtime(self.systemviewsfile)
         if self._systemviews[0] != file_mtime  or self._systemviews[1] != file_size:
