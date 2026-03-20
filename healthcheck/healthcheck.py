@@ -1308,6 +1308,7 @@ class EditingHealthCheck(HealthCheck):
 
             with open(self.configfile,'rb') as f:
                 configs = f.read()
+            config_hashcode = hashlib.sha256(configs).hexdigest()
             return config_hashcode != self.config_hashcode
 
     async def continuous_check(self,*args,taskcls=BaseServiceHealthCheckTask):
