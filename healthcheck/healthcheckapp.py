@@ -228,7 +228,9 @@ async def healthstatusstream(system):
             except TimeoutError as ex:
                 timeout = True
             for healthstatus in reader.items():
-                if healthstatus[0][1] in viewsettings.get(healthstatus[0][0],set()):
+                if isinstance(healthstatus,str):
+                    yield "{}\n".format(json.dumps(healthstatus,cls=serializers.JSONFormater)).encode()
+                elif healthstatus[0][1] in viewsettings.get(healthstatus[0][0],set()):
                     yield "{}\n".format(json.dumps(healthstatus,cls=serializers.JSONFormater)).encode()
             if timeout:
                 healthservicestatus = await ping()
