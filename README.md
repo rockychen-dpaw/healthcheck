@@ -24,17 +24,28 @@ Manage new or updated project dependencies with uv also, like so:
 ## Environment variables
 
 This project uses **python-dotenv** to set environment variables (in a `.env` file).
-Most settings have default values; check `status.py` for required variables.
+Most settings have default values; check `healthcheck/settings.py` for required variables.
+
+The minimum required environment variables for the polling server are as follows:
+
+    HEALTHCHECKSERVER_HOST
+    HEALTHCHECKSERVER_PORT
+    AUTH2_USER
+    AUTH2_PASSWORD
 
 ## Running
 
-To run a local copy of the application:
+Start the background headless polling server:
 
-    python status.py
-    # Serve via HyperCorn instead of Quart:
-    hypercorn status:app --config hypercorn.toml --reload
+    python -m healthcheck.healthcheckserver
 
-The application runs on port 8080 by default. To change this, modify `hypercorn.toml`.
+The polling server runs on port 9080 by default. Set `HEALTHCHECKSERVER_PORT` to change this.
+
+Start the front-end application:
+
+    hypercorn healthcheck.healthcheckapp:application --config hypercorn.toml
+
+The front-end application runs on port 8080 by default. To change this, modify `hypercorn.toml`.
 
 ## Testing
 

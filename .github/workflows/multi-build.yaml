@@ -107,7 +107,7 @@ jobs:
       - name: Login to GitHub Container Registry
         # This step logs in to the GitHub Container Registry (GHCR) using the docker/login-action.
         # It uses the GitHub actor's username and the GITHUB_TOKEN secret for authentication.
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -121,7 +121,7 @@ jobs:
         # The cache-from and cache-to options are used to enable caching for the build process.
         # The cache is stored in GitHub Actions cache and is scoped to the repository, branch, and platform.
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           DOCKER_BUILDKIT: 1
         with:
@@ -148,7 +148,7 @@ jobs:
         # It uses the actions/upload-artifact action to upload the file created in the previous step.
         # The artifact is named digests-${{ env.PLATFORM_PAIR }}, where PLATFORM_PAIR is the platform name with '/' replaced by '-'.
         # The artifact is retained for 1 day, and if no files are found, it will throw an error.
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
           path: /tmp/digests/*
@@ -184,7 +184,7 @@ jobs:
         # This step downloads the digest files uploaded in the build job.
         # It uses the actions/download-artifact action to download the artifacts with the pattern digests-*.
         # The downloaded files are merged into the /tmp/digests directory.
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digests-*
@@ -212,7 +212,7 @@ jobs:
             network=host
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         # This step logs in to the GitHub Container Registry (GHCR) using the docker/login-action.
         # It uses the GitHub actor's username and the GITHUB_TOKEN secret for authentication.
         # The login is necessary to push the merged manifest list to GHCR.
@@ -280,7 +280,7 @@ jobs:
       security-events: write
     steps:
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.34.0
+        uses: aquasecurity/trivy-action@0.35.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
         with:
