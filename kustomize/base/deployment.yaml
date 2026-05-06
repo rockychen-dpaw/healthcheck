@@ -25,7 +25,7 @@ spec:
           resources:
             requests:
               memory: '64Mi'
-              cpu: '5m'
+              cpu: '10m'
             limits:
               memory: '2048Mi'
               cpu: '500m'
@@ -81,3 +81,8 @@ spec:
                     operator: In
                     values:
                       - arm64
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: Exists
