@@ -386,7 +386,9 @@ async def index_legacy():
     output += "<p>\n"
 
     output += f"Latest tracking point: {data['latest_point']}<br>\n"
-    if data["latest_point_age_min"] > TRACKING_POINTS_MAX_DELAY:
+    if data["latest_point_age_min"] is None:
+        output += "Resource Tracking data unavailable<br>\n"
+    elif data["latest_point_age_min"] > TRACKING_POINTS_MAX_DELAY:
         output += "Resource Tracking Delay too high! Currently {0:.1f} min (max {1} min)<br>\n".format(
             data["latest_point_age_min"],
             TRACKING_POINTS_MAX_DELAY,
@@ -398,7 +400,9 @@ async def index_legacy():
         )
 
     output += f"Latest Iridium tracking point: {data['iridium_latest_point']}<br>\n"
-    if data["iridium_latest_point_age_min"] > TRACKING_POINTS_MAX_DELAY:
+    if data["iridium_latest_point_age_min"] is None:
+        output += "Iridium tracking data unavailable<br>\n"
+    elif data["iridium_latest_point_age_min"] > TRACKING_POINTS_MAX_DELAY:
         output += "Iridium tracking delay too high! Currently {0:.1f} min (max {1} min)<br>\n".format(
             data["iridium_latest_point_age_min"],
             TRACKING_POINTS_MAX_DELAY,
@@ -410,17 +414,25 @@ async def index_legacy():
         )
 
     output += f"Latest Tracplus tracking point: {data['tracplus_latest_point']}<br>\n"
-    output += "Tracplus tracking delay currently {0:.1f} min<br>\n".format(
-        data["tracplus_latest_point_delay"],
-    )
+    if data["tracplus_latest_point_delay"] is not None:
+        output += "Tracplus tracking delay currently {0:.1f} min<br>\n".format(
+            data["tracplus_latest_point_delay"],
+        )
+    else:
+        output += "Tracplus tracking data unavailable<br>\n"
 
     output += f"Latest DFES tracking point: {data['dfes_latest_point']}<br>\n"
-    output += "DFES tracking delay currently {0:.1f} min<br>\n".format(
-        data["dfes_latest_point_delay"],
-    )
+    if data["dfes_latest_point_delay"] is not None:
+        output += "DFES tracking delay currently {0:.1f} min<br>\n".format(
+            data["dfes_latest_point_delay"],
+        )
+    else:
+        output += "DFES tracking data unavailable<br>\n"
 
     output += f"Latest Fleetcare tracking point: {data['fleetcare_latest_point']}<br>\n"
-    if data["fleetcare_latest_point_delay"] > TRACKING_POINTS_MAX_DELAY:
+    if data["fleetcare_latest_point_delay"] is None:
+        output += "Fleetcare tracking data unavailable<br>\n"
+    elif data["fleetcare_latest_point_delay"] > TRACKING_POINTS_MAX_DELAY:
         output += "Fleetcare tracking delay too high! Currently {0:.1f} min (max {1} min)<br>\n".format(
             data["fleetcare_latest_point_delay"],
             TRACKING_POINTS_MAX_DELAY,
@@ -456,88 +468,42 @@ async def index_legacy():
     output += "</p>\n<p>\n"
 
     # KB layers
-    if data[DBCA_INCIDENT_MAPPING_POLYGONS]:
-        output += f"DBCA Incident Mapping polygons layer ({DBCA_INCIDENT_MAPPING_POLYGONS}): OK<br>\n"
-    else:
-        output += f"DBCA Incident Mapping polygons layer ({DBCA_INCIDENT_MAPPING_POLYGONS}): error<br>\n"
-
-    if data[DBCA_INCIDENT_MAPPING_LINES]:
-        output += f"DBCA Incident Mapping lines layer ({DBCA_INCIDENT_MAPPING_LINES}): OK<br>\n"
-    else:
-        output += f"DBCA Incident Mapping lines layer ({DBCA_INCIDENT_MAPPING_LINES}): error<br>\n"
-
-    if data[DBCA_INCIDENT_MAPPING_POINTS]:
-        output += f"DBCA Incident Mapping points layer ({DBCA_INCIDENT_MAPPING_POINTS}): OK<br>\n"
-    else:
-        output += f"DBCA Incident Mapping points layer ({DBCA_INCIDENT_MAPPING_POINTS}): error<br>\n"
-
-    if data[DFES_GOING_BUSHFIRES_LAYER]:
-        output += f"DFES Going Bushfires layer ({DFES_GOING_BUSHFIRES_LAYER}): OK<br>\n"
-    else:
-        output += "DFES Going Bushfires layer (DFES_GOING_BUSHFIRES_LAYER): error<br>\n"
-
-    if data[ALL_CURRENT_HOTSPOTS_LAYER]:
-        output += f"All current hotspots layer ({ALL_CURRENT_HOTSPOTS_LAYER}): OK<br>\n"
-    else:
-        output += f"All current hotspots layer ({ALL_CURRENT_HOTSPOTS_LAYER}): error<br>\n"
-
-    if data[LIGHTNING_24H_LAYER]:
-        output += f"Lightning 24h layer ({LIGHTNING_24H_LAYER}): OK<br>\n"
-    else:
-        output += f"Lightning 24h layer ({LIGHTNING_24H_LAYER}): error<br>\n"
-
-    if data[LIGHTNING_24_48H_LAYER]:
-        output += f"Lightning 24-48h layer ({LIGHTNING_24_48H_LAYER}): OK<br>\n"
-    else:
-        output += f"Lightning 24-48h layer ({LIGHTNING_24_48H_LAYER}): error<br>\n"
-
-    if data[LIGHTNING_48_72H_LAYER]:
-        output += f"Lightning 48-72h layer ({LIGHTNING_48_72H_LAYER}): OK<br>\n"
-    else:
-        output += f"Lightning 48-72h layer ({LIGHTNING_48_72H_LAYER}): error<br>\n"
-
-    if data[FUEL_AGE_1_6Y_LAYER]:
-        output += f"Fuel age 1-6+ years layer ({FUEL_AGE_1_6Y_LAYER}): OK<br>\n"
-    else:
-        output += f"Fuel age 1-6+ years layer ({FUEL_AGE_1_6Y_LAYER}): error<br>\n"
-
-    if data[FUEL_AGE_NONFOREST_1_6Y_LAYER]:
-        output += f"Fuel age non forest 1-6+ years layer ({FUEL_AGE_NONFOREST_1_6Y_LAYER}): OK<br>\n"
-    else:
-        output += f"Fuel age non forest 1-6+ years layer ({FUEL_AGE_NONFOREST_1_6Y_LAYER}): error<br>\n"
-
-    if data[DBCA_BURN_PROGRAM_LAYER]:
-        output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): OK<br>\n"
-    else:
-        output += f"DBCA burn options program layer ({DBCA_BURN_PROGRAM_LAYER}): error<br>\n"
-
-    if data[DBCA_LANDS_WATERS_LAYER]:
-        output += f"DBCA legislated lands and waters layer ({DBCA_LANDS_WATERS_LAYER}): OK<br>\n"
-    else:
-        output += f"DBCA legislated lands and waters layer ({DBCA_LANDS_WATERS_LAYER}): error<br>\n"
-
-    if data[DBCA_LANDS_WATERS_INTEREST_LAYER]:
-        output += f"DBCA lands and waters of interest layer ({DBCA_LANDS_WATERS_INTEREST_LAYER}): OK<br>\n"
-    else:
-        output += f"DBCA lands and waters of interest layer ({DBCA_LANDS_WATERS_INTEREST_LAYER}): error<br>\n"
+    for layer_name, label in [
+        (DBCA_INCIDENT_MAPPING_POLYGONS, "DBCA Incident Mapping polygons layer"),
+        (DBCA_INCIDENT_MAPPING_LINES, "DBCA Incident Mapping lines layer"),
+        (DBCA_INCIDENT_MAPPING_POINTS, "DBCA Incident Mapping points layer"),
+        (DFES_GOING_BUSHFIRES_LAYER, "DFES Going Bushfires layer"),
+        (ALL_CURRENT_HOTSPOTS_LAYER, "All current hotspots layer"),
+        (LIGHTNING_24H_LAYER, "Lightning 24h layer"),
+        (LIGHTNING_24_48H_LAYER, "Lightning 24-48h layer"),
+        (LIGHTNING_48_72H_LAYER, "Lightning 48-72h layer"),
+        (FUEL_AGE_1_6Y_LAYER, "Fuel age 1-6+ years layer"),
+        (FUEL_AGE_NONFOREST_1_6Y_LAYER, "Fuel age non forest 1-6+ years layer"),
+        (DBCA_BURN_PROGRAM_LAYER, "DBCA burn options program layer"),
+        (DBCA_LANDS_WATERS_LAYER, "DBCA legislated lands and waters layer"),
+        (DBCA_LANDS_WATERS_INTEREST_LAYER, "DBCA lands and waters of interest layer"),
+    ]:
+        if not layer_name:
+            continue
+        if data.get(layer_name):
+            output += f"{label} ({layer_name}): OK<br>\n"
+        else:
+            output += f"{label} ({layer_name}): error<br>\n"
 
     output += "</p>\n<p>\n"
 
     # KMI layers
-    if data[COG_BASEMAP_LAYER]:
-        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): OK<br>\n"
-    else:
-        output += f"COG basemap layer ({COG_BASEMAP_LAYER}): error<br>\n"
-
-    if data[STATE_BASEMAP_LAYER]:
-        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): OK<br>\n"
-    else:
-        output += f"State basemap layer ({STATE_BASEMAP_LAYER}): error<br>\n"
-
-    if data[DAILY_ACTIVE_BURNS_LAYER]:
-        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): OK<br>\n"
-    else:
-        output += f"Daily active and planned prescribed burns layer ({DAILY_ACTIVE_BURNS_LAYER}): error<br>\n"
+    for layer_name, label in [
+        (COG_BASEMAP_LAYER, "COG basemap layer"),
+        (STATE_BASEMAP_LAYER, "State basemap layer"),
+        (DAILY_ACTIVE_BURNS_LAYER, "Daily active and planned prescribed burns layer"),
+    ]:
+        if not layer_name:
+            continue
+        if data.get(layer_name):
+            output += f"{label} ({layer_name}): OK<br>\n"
+        else:
+            output += f"{label} ({layer_name}): error<br>\n"
 
     output += "</p>\n<p>\n"
 
