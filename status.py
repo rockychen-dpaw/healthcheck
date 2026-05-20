@@ -267,15 +267,13 @@ async def get_healthcheck() -> Dict[str, Any]:
             d["success"] = False
 
         # Common parameters to send with every GetMap request to KMI Geoserver.
-        wms_params = WMS_PARAMS
-
         for kmi_layer in [
             COG_BASEMAP_LAYER,
             STATE_BASEMAP_LAYER,
             DAILY_ACTIVE_BURNS_LAYER,
         ]:
             if kmi_layer:
-                wms_params["layers"] = kmi_layer
+                wms_params = {**WMS_PARAMS, "layers": kmi_layer}
                 prefix = kmi_layer.split(":")[0]
                 path = f"{prefix}/wms"
                 url = f"{KMI_URL}/{path}"
@@ -312,8 +310,6 @@ async def get_healthcheck() -> Dict[str, Any]:
             DBCA_LANDS_WATERS_INTEREST_LAYER,
         ]:
             if kb_layer:
-                wms_params["layers"] = kb_layer
-
                 try:
                     kb_resp = await get_kb_layer(kb_layer)
                     if kb_resp:
