@@ -101,7 +101,7 @@ async def fetch_data(session, url, error_list, source_desc) -> Optional[Dict[str
         return data
     except:
         LOGGER.exception(f"Error while querying {source_desc}: {url}")
-        error_list.append(f"Error while querying {source_desc}: {url}")
+        error_list.append(f"Error while querying {source_desc}")
         return None
 
 
