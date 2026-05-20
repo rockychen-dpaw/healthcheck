@@ -351,16 +351,19 @@ async def get_healthcheck() -> Dict[str, Any]:
         return d
 
 
+# Intentionally public: used by Kubernetes readiness probes.
 @app.route("/readyz")
 async def readiness():
     return "OK"
 
 
+# Intentionally public: used by Kubernetes liveness probes.
 @app.route("/livez")
 async def liveness():
     return "OK"
 
 
+# Protected by external SSO at the ingress level. Not accessible without authentication.
 @app.route("/json")
 async def healthcheck_json():
     try:
@@ -381,6 +384,7 @@ async def healthcheck_json():
 
 
 # Retain legacy health check route for PRTG.
+# Protected by external SSO at the ingress level. Not accessible without authentication.
 @app.route("/legacy")
 async def index_legacy():
     data = await get_healthcheck()
@@ -536,6 +540,7 @@ async def index_legacy():
     return response
 
 
+# Protected by external SSO at the ingress level. Not accessible without authentication.
 @app.route("/")
 async def index():
     """The root view returns a static page which queries API endpoints asynchronously and renders the result."""
@@ -543,6 +548,9 @@ async def index():
 
 
 ERROR_BUTTON_HTML = "<button class='pure-button button-error'>ERROR</button>"
+
+# All /api/* routes below are protected by external SSO at the ingress level.
+# They are not accessible without authentication.
 
 
 @app.route("/api/<source>/latest")
