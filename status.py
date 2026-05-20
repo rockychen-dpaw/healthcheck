@@ -250,8 +250,8 @@ async def get_healthcheck() -> Dict[str, Any]:
                 "maxFeatures": 1,
                 "outputFormat": "application/json",
             }
-            async with get_anonymous_session() as session:
-                resp = await session.get(KMI_WFS_URL, params=params)
+            async with get_anonymous_session() as anon_session:
+                resp = await anon_session.get(KMI_WFS_URL, params=params)
             resp.raise_for_status()
             data = resp.json()
             d["todays_burns_count"] = data["totalFeatures"]
