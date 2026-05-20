@@ -39,4 +39,3 @@ async def test_todays_burns(mock_get, test_client):
     response = await test_client.get("/api/todays-burns")
     assert response.status_code == 200
     assert b"5" in response.response.data
-

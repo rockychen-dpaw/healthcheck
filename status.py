@@ -84,7 +84,7 @@ DBCA_LANDS_WATERS_LAYER = os.environ.get("DBCA_LANDS_WATERS_LAYER", None)
 DBCA_LANDS_WATERS_INTEREST_LAYER = os.environ.get("DBCA_LANDS_WATERS_INTEREST_LAYER", None)
 
 
-async def get_session(timeout: float = 10.0) -> httpx.AsyncClient:
+def get_session(timeout: float = 10.0) -> httpx.AsyncClient:
     return httpx.AsyncClient(auth=(USER_SSO, PASS_SSO), timeout=timeout)
 
 
@@ -103,250 +103,250 @@ async def fetch_data(session, url, error_list, source_desc) -> Optional[Dict[str
 
 async def get_healthcheck() -> Dict[str, Any]:
     """Query HTTP sources and return a dictionary of response successes."""
-    session = await get_session()
-    d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
+    async with get_session() as session:
+        d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
 
-    # All tracking device types delay.
-    source_desc = "All Resource Tracking devices"
-    data = await fetch_data(session, RT_DEVICES_URL, d["errors"], source_desc)
-    if data:
-        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
-        d["latest_point"] = t.isoformat()
-        d["latest_point_age_min"] = data["objects"][0]["age_minutes"]
-        # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
-        if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        # All tracking device types delay.
+        source_desc = "All Resource Tracking devices"
+        data = await fetch_data(session, RT_DEVICES_URL, d["errors"], source_desc)
+        if data:
+            t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
+            d["latest_point"] = t.isoformat()
+            d["latest_point_age_min"] = data["objects"][0]["age_minutes"]
+            # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
+            if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+                d["success"] = False
+                d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
+        else:
+            # No return data from this endpoint triggers failure.
+            d["latest_point"] = None
+            d["latest_point_age_min"] = None
             d["success"] = False
-            d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
-    else:
-        # No return data from this endpoint triggers failure.
-        d["latest_point"] = None
-        d["latest_point_age_min"] = None
-        d["success"] = False
 
-    # Iridium device delay.
-    source_desc = "Iridium devices"
-    data = await fetch_data(session, RT_IRIDIUM_URL, d["errors"], source_desc)
-    if data:
-        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
-        d["iridium_latest_point"] = t.isoformat()
-        d["iridium_latest_point_age_min"] = data["objects"][0]["age_minutes"]
-        # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
-        if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        # Iridium device delay.
+        source_desc = "Iridium devices"
+        data = await fetch_data(session, RT_IRIDIUM_URL, d["errors"], source_desc)
+        if data:
+            t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
+            d["iridium_latest_point"] = t.isoformat()
+            d["iridium_latest_point_age_min"] = data["objects"][0]["age_minutes"]
+            # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
+            if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+                d["success"] = False
+                d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
+        else:
+            d["iridium_latest_point"] = None
+            d["iridium_latest_point_age_min"] = None
+
+        # Iridium device metrics.
+        source_desc = "Iridium device metrics"
+        data = await fetch_data(session, RT_IRIDIUM_METRICS_URL, d["errors"], source_desc)
+        if data:
+            d["iridium_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+        else:
+            d["iridium_loggedpoint_rate_min"] = None
+
+        # TracPlus device delay (no max age).
+        source_desc = "TracPlus devices"
+        data = await fetch_data(session, RT_TRACPLUS_URL, d["errors"], source_desc)
+        if data:
+            t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
+            d["tracplus_latest_point"] = t.isoformat()
+            d["tracplus_latest_point_delay"] = data["objects"][0]["age_minutes"]
+        else:
+            d["tracplus_latest_point"] = None
+            d["tracplus_latest_point_delay"] = None
+
+        # TracPlus device metrics.
+        source_desc = "TracPlus device metrics"
+        data = await fetch_data(session, RT_TRACPLUS_METRICS_URL, d["errors"], source_desc)
+        if data:
+            d["tracplus_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+        else:
+            d["tracplus_loggedpoint_rate_min"] = None
+
+        # DFES device delay (no max age).
+        source_desc = "DFES devices"
+        data = await fetch_data(session, RT_DFES_URL, d["errors"], source_desc)
+        if data:
+            t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
+            d["dfes_latest_point"] = t.isoformat()
+            d["dfes_latest_point_delay"] = data["objects"][0]["age_minutes"]
+        else:
+            d["dfes_latest_point"] = None
+            d["dfes_latest_point_delay"] = None
+
+        # DFES device metrics.
+        source_desc = "DFES device metrics"
+        data = await fetch_data(session, RT_DFES_METRICS_URL, d["errors"], source_desc)
+        if data:
+            d["dfes_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+        else:
+            d["dfes_loggedpoint_rate_min"] = None
+
+        # Fleetcare device delay.
+        source_desc = "Fleetcare devices"
+        data = await fetch_data(session, RT_FLEETCARE_URL, d["errors"], source_desc)
+        if data:
+            t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
+            d["fleetcare_latest_point"] = t.isoformat()
+            d["fleetcare_latest_point_delay"] = data["objects"][0]["age_minutes"]
+            # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
+            if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+                d["success"] = False
+                d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
+        else:
+            d["fleetcare_latest_point"] = None
+            d["fleetcare_latest_point_delay"] = None
+
+        # Fleetcare device metrics.
+        source_desc = "Fleetcare device metrics"
+        data = await fetch_data(session, RT_FLEETCARE_METRICS_URL, d["errors"], source_desc)
+        if data:
+            d["fleetcare_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+        else:
+            d["fleetcare_loggedpoint_rate_min"] = None
+
+        # Netstar device delay (no max age).
+        source_desc = "Netstar devices"
+        data = await fetch_data(session, RT_NETSTAR_URL, d["errors"], source_desc)
+        if data:
+            t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
+            d["netstar_latest_point"] = t.isoformat()
+            d["netstar_latest_point_delay"] = data["objects"][0]["age_minutes"]
+        else:
+            d["netstar_latest_point"] = None
+            d["netstar_latest_point_delay"] = None
+
+        # Netstar device metrics.
+        source_desc = "Netstar device metrics"
+        data = await fetch_data(session, RT_NETSTAR_METRICS_URL, d["errors"], source_desc)
+        if data:
+            d["netstar_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
+        else:
+            d["netstar_loggedpoint_rate_min"] = None
+
+        # CSW API response.
+        source_desc = "CSW API endpoint"
+        data = await fetch_data(session, CSW_API, d["errors"], source_desc)
+        if data:
+            d["csw_catalogue_count"] = len(data)
+        else:
+            # No response from this endpoint triggers failure.
+            d["csw_catalogue_count"] = None
             d["success"] = False
-            d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
-    else:
-        d["iridium_latest_point"] = None
-        d["iridium_latest_point_age_min"] = None
 
-    # Iridium device metrics.
-    source_desc = "Iridium device metrics"
-    data = await fetch_data(session, RT_IRIDIUM_METRICS_URL, d["errors"], source_desc)
-    if data:
-        d["iridium_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    else:
-        d["iridium_loggedpoint_rate_min"] = None
-
-    # TracPlus device delay (no max age).
-    source_desc = "TracPlus devices"
-    data = await fetch_data(session, RT_TRACPLUS_URL, d["errors"], source_desc)
-    if data:
-        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
-        d["tracplus_latest_point"] = t.isoformat()
-        d["tracplus_latest_point_delay"] = data["objects"][0]["age_minutes"]
-    else:
-        d["tracplus_latest_point"] = None
-        d["tracplus_latest_point_delay"] = None
-
-    # TracPlus device metrics.
-    source_desc = "TracPlus device metrics"
-    data = await fetch_data(session, RT_TRACPLUS_METRICS_URL, d["errors"], source_desc)
-    if data:
-        d["tracplus_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    else:
-        d["tracplus_loggedpoint_rate_min"] = None
-
-    # DFES device delay (no max age).
-    source_desc = "DFES devices"
-    data = await fetch_data(session, RT_DFES_URL, d["errors"], source_desc)
-    if data:
-        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
-        d["dfes_latest_point"] = t.isoformat()
-        d["dfes_latest_point_delay"] = data["objects"][0]["age_minutes"]
-    else:
-        d["dfes_latest_point"] = None
-        d["dfes_latest_point_delay"] = None
-
-    # DFES device metrics.
-    source_desc = "DFES device metrics"
-    data = await fetch_data(session, RT_DFES_METRICS_URL, d["errors"], source_desc)
-    if data:
-        d["dfes_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    else:
-        d["dfes_loggedpoint_rate_min"] = None
-
-    # Fleetcare device delay.
-    source_desc = "Fleetcare devices"
-    data = await fetch_data(session, RT_FLEETCARE_URL, d["errors"], source_desc)
-    if data:
-        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
-        d["fleetcare_latest_point"] = t.isoformat()
-        d["fleetcare_latest_point_delay"] = data["objects"][0]["age_minutes"]
-        # The age of the first logged point returned from this endpoint exceeding the maximum delay triggers failure.
-        if data["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+        # KMI WFS: Today's Burns layer (anonymous request).
+        try:
+            params = {
+                "service": "WFS",
+                "version": "1.0.0",
+                "request": "GetFeature",
+                "typeName": "public:todays_burns",
+                "maxFeatures": 1,
+                "outputFormat": "application/json",
+            }
+            resp = httpx.get(KMI_WFS_URL, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            d["todays_burns_count"] = data["totalFeatures"]
+        except:
+            LOGGER.exception("Error querying KMI WFS (public:todays_burns)")
+            d["errors"].append("Error querying KMI WFS (public:todays_burns)")
+            d["todays_burns_count"] = None
             d["success"] = False
-            d["errors"].append(f"{source_desc} exceeds max delay {TRACKING_POINTS_MAX_DELAY}")
-    else:
-        d["fleetcare_latest_point"] = None
-        d["fleetcare_latest_point_delay"] = None
 
-    # Fleetcare device metrics.
-    source_desc = "Fleetcare device metrics"
-    data = await fetch_data(session, RT_FLEETCARE_METRICS_URL, d["errors"], source_desc)
-    if data:
-        d["fleetcare_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    else:
-        d["fleetcare_loggedpoint_rate_min"] = None
+        # BFRS API response.
+        source_desc = "BFRS API endpoint"
+        data = await fetch_data(session, BFRS_URL, d["errors"], source_desc)
+        if data:
+            d["bfrs_profile_api_endpoint"] = True
+        else:
+            # No response from this endpoint triggers failure.
+            d["bfrs_profile_api_endpoint"] = None
+            d["success"] = False
 
-    # Netstar device delay (no max age).
-    source_desc = "Netstar devices"
-    data = await fetch_data(session, RT_NETSTAR_URL, d["errors"], source_desc)
-    if data:
-        t = datetime.fromisoformat(data["objects"][0]["seen"]).astimezone(TZ)
-        d["netstar_latest_point"] = t.isoformat()
-        d["netstar_latest_point_delay"] = data["objects"][0]["age_minutes"]
-    else:
-        d["netstar_latest_point"] = None
-        d["netstar_latest_point_delay"] = None
+        # Common parameters to send with every GetMap request to KMI Geoserver.
+        wms_params = WMS_PARAMS
 
-    # Netstar device metrics.
-    source_desc = "Netstar device metrics"
-    data = await fetch_data(session, RT_NETSTAR_METRICS_URL, d["errors"], source_desc)
-    if data:
-        d["netstar_loggedpoint_rate_min"] = int(data["logged_point_count"] / data["minutes"])
-    else:
-        d["netstar_loggedpoint_rate_min"] = None
-
-    # CSW API response.
-    source_desc = "CSW API endpoint"
-    data = await fetch_data(session, CSW_API, d["errors"], source_desc)
-    if data:
-        d["csw_catalogue_count"] = len(data)
-    else:
-        # No response from this endpoint triggers failure.
-        d["csw_catalogue_count"] = None
-        d["success"] = False
-
-    # KMI WFS: Today's Burns layer (anonymous request).
-    try:
-        params = {
-            "service": "WFS",
-            "version": "1.0.0",
-            "request": "GetFeature",
-            "typeName": "public:todays_burns",
-            "maxFeatures": 1,
-            "outputFormat": "application/json",
-        }
-        resp = httpx.get(KMI_WFS_URL, params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        d["todays_burns_count"] = data["totalFeatures"]
-    except:
-        LOGGER.exception("Error querying KMI WFS (public:todays_burns)")
-        d["errors"].append("Error querying KMI WFS (public:todays_burns)")
-        d["todays_burns_count"] = None
-        d["success"] = False
-
-    # BFRS API response.
-    source_desc = "BFRS API endpoint"
-    data = await fetch_data(session, BFRS_URL, d["errors"], source_desc)
-    if data:
-        d["bfrs_profile_api_endpoint"] = True
-    else:
-        # No response from this endpoint triggers failure.
-        d["bfrs_profile_api_endpoint"] = None
-        d["success"] = False
-
-    # Common parameters to send with every GetMap request to KMI Geoserver.
-    wms_params = WMS_PARAMS
-
-    for kmi_layer in [
-        COG_BASEMAP_LAYER,
-        STATE_BASEMAP_LAYER,
-        DAILY_ACTIVE_BURNS_LAYER,
-    ]:
-        if kmi_layer:
-            wms_params["layers"] = kmi_layer
-            prefix = kmi_layer.split(":")[0]
-            path = f"{prefix}/wms"
-            url = f"{KMI_URL}/{path}"
-            try:
-                if prefix == "public":
-                    resp = httpx.get(url, params=wms_params)
-                else:
-                    resp = await session.get(url, params=wms_params, timeout=30)
-                resp.raise_for_status()
-                if "ServiceExceptionReport" in str(resp.content):
+        for kmi_layer in [
+            COG_BASEMAP_LAYER,
+            STATE_BASEMAP_LAYER,
+            DAILY_ACTIVE_BURNS_LAYER,
+        ]:
+            if kmi_layer:
+                wms_params["layers"] = kmi_layer
+                prefix = kmi_layer.split(":")[0]
+                path = f"{prefix}/wms"
+                url = f"{KMI_URL}/{path}"
+                try:
+                    if prefix == "public":
+                        resp = httpx.get(url, params=wms_params)
+                    else:
+                        resp = await session.get(url, params=wms_params, timeout=30)
+                    resp.raise_for_status()
+                    if "ServiceExceptionReport" in str(resp.content):
+                        d[kmi_layer] = False
+                        d["success"] = False
+                        d["errors"].append(f"Error querying KMI layer {kmi_layer}")
+                    else:
+                        d[kmi_layer] = True
+                except Exception:
                     d[kmi_layer] = False
                     d["success"] = False
-                    d["errors"].append(f"Error querying KMI layer {kmi_layer}")
-                else:
-                    d[kmi_layer] = True
-            except Exception:
-                d[kmi_layer] = False
-                d["success"] = False
 
-    # KB layers
-    for kb_layer in [
-        DBCA_INCIDENT_MAPPING_POLYGONS,
-        DBCA_INCIDENT_MAPPING_LINES,
-        DBCA_INCIDENT_MAPPING_POINTS,
-        DFES_GOING_BUSHFIRES_LAYER,
-        ALL_CURRENT_HOTSPOTS_LAYER,
-        LIGHTNING_24H_LAYER,
-        LIGHTNING_24_48H_LAYER,
-        LIGHTNING_48_72H_LAYER,
-        FUEL_AGE_1_6Y_LAYER,
-        FUEL_AGE_NONFOREST_1_6Y_LAYER,
-        DBCA_BURN_PROGRAM_LAYER,
-        DBCA_LANDS_WATERS_LAYER,
-        DBCA_LANDS_WATERS_INTEREST_LAYER,
-    ]:
-        if kb_layer:
-            wms_params["layers"] = kb_layer
+        # KB layers
+        for kb_layer in [
+            DBCA_INCIDENT_MAPPING_POLYGONS,
+            DBCA_INCIDENT_MAPPING_LINES,
+            DBCA_INCIDENT_MAPPING_POINTS,
+            DFES_GOING_BUSHFIRES_LAYER,
+            ALL_CURRENT_HOTSPOTS_LAYER,
+            LIGHTNING_24H_LAYER,
+            LIGHTNING_24_48H_LAYER,
+            LIGHTNING_48_72H_LAYER,
+            FUEL_AGE_1_6Y_LAYER,
+            FUEL_AGE_NONFOREST_1_6Y_LAYER,
+            DBCA_BURN_PROGRAM_LAYER,
+            DBCA_LANDS_WATERS_LAYER,
+            DBCA_LANDS_WATERS_INTEREST_LAYER,
+        ]:
+            if kb_layer:
+                wms_params["layers"] = kb_layer
 
-            try:
-                kb_resp = await get_kb_layer(kb_layer)
-                if kb_resp:
-                    d[kb_layer] = True
-                else:
+                try:
+                    kb_resp = await get_kb_layer(kb_layer)
+                    if kb_resp:
+                        d[kb_layer] = True
+                    else:
+                        d[kb_layer] = False
+                        d["success"] = False
+                        d["errors"].append(f"Error querying KMI layer {kb_layer}")
+                except Exception:
                     d[kb_layer] = False
                     d["success"] = False
-                    d["errors"].append(f"Error querying KMI layer {kb_layer}")
-            except Exception:
-                d[kb_layer] = False
-                d["success"] = False
 
-    # Auth2 status response.
-    source_desc = "Auth2 status API endpoint"
-    data = await fetch_data(session, AUTH2_STATUS_URL, d["errors"], source_desc)
-    if data:
-        d["auth2_status"] = data["healthy"]
-    else:
-        # No response from this endpoint triggers failure.
-        d["auth2_status"] = None
-        d["success"] = False
+        # Auth2 status response.
+        source_desc = "Auth2 status API endpoint"
+        data = await fetch_data(session, AUTH2_STATUS_URL, d["errors"], source_desc)
+        if data:
+            d["auth2_status"] = data["healthy"]
+        else:
+            # No response from this endpoint triggers failure.
+            d["auth2_status"] = None
+            d["success"] = False
 
-    # SSS status response.
-    source_desc = "SSS API endpoint"
-    data = await fetch_data(session, SSS_URL, d["errors"], source_desc)
-    if data:
-        d["sss_status"] = True
-    else:
-        # No response from this endpoint triggers failure.
-        d["sss_status"] = None
-        d["success"] = False
+        # SSS status response.
+        source_desc = "SSS API endpoint"
+        data = await fetch_data(session, SSS_URL, d["errors"], source_desc)
+        if data:
+            d["sss_status"] = True
+        else:
+            # No response from this endpoint triggers failure.
+            d["sss_status"] = None
+            d["success"] = False
 
-    return d
+        return d
 
 
 @app.route("/readyz")
@@ -579,8 +579,6 @@ ERROR_BUTTON_HTML = "<button class='pure-button button-error'>ERROR</button>"
 
 @app.route("/api/<source>/latest")
 async def api_source_latest(source):
-    session = await get_session()
-
     endpoint_map = {
         "all-sources": RT_DEVICES_URL,
         "iridium": RT_IRIDIUM_URL,
@@ -591,19 +589,18 @@ async def api_source_latest(source):
     }
 
     try:
-        resp = await session.get(endpoint_map[source])
-        resp.raise_for_status()
-        data = resp.json()
-        seen = humanize.naturaltime(datetime.fromisoformat(data["objects"][0]["seen"]))
-        return f"<button class='pure-button button-success'>{seen}</button>"
+        async with get_session() as session:
+            resp = await session.get(endpoint_map[source])
+            resp.raise_for_status()
+            data = resp.json()
+            seen = humanize.naturaltime(datetime.fromisoformat(data["objects"][0]["seen"]))
+            return f"<button class='pure-button button-success'>{seen}</button>"
     except:
         return ERROR_BUTTON_HTML
 
 
 @app.route("/api/<source>/loggedpoint-rate")
 async def api_source_loggedpoint_rate(source):
-    session = await get_session()
-
     endpoint_map = {
         "iridium": RT_IRIDIUM_METRICS_URL,
         "tracplus": RT_TRACPLUS_METRICS_URL,
@@ -613,21 +610,20 @@ async def api_source_loggedpoint_rate(source):
     }
 
     try:
-        resp = await session.get(endpoint_map[source])
-        resp.raise_for_status()
-        data = resp.json()
-        loggedpoint_rate = int(data["logged_point_count"] / data["minutes"])
-        if loggedpoint_rate < 1:
-            loggedpoint_rate = "<1"
-        return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
+        async with get_session() as session:
+            resp = await session.get(endpoint_map[source])
+            resp.raise_for_status()
+            data = resp.json()
+            loggedpoint_rate = int(data["logged_point_count"] / data["minutes"])
+            if loggedpoint_rate < 1:
+                loggedpoint_rate = "<1"
+            return f"<button class='pure-button button-success'>{loggedpoint_rate} points/min</button>"
     except:
         return ERROR_BUTTON_HTML
 
 
 @app.route("/api/<source>/delay")
 async def api_source_delay(source):
-    session = await get_session()
-
     endpoint_map = {
         "all-sources": RT_DEVICES_URL,
         "iridium": RT_IRIDIUM_URL,
@@ -635,80 +631,76 @@ async def api_source_delay(source):
     }
 
     try:
-        trackingdata = await session.get(endpoint_map[source])
-        trackingdata.raise_for_status()
-        trackingdata = trackingdata.json()
-        if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
-            return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} min</button>"
-        else:
-            return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} min</button>"
+        async with get_session() as session:
+            trackingdata = await session.get(endpoint_map[source])
+            trackingdata.raise_for_status()
+            trackingdata = trackingdata.json()
+            if trackingdata["objects"][0]["age_minutes"] > TRACKING_POINTS_MAX_DELAY:
+                return f"<button class='pure-button button-error'>>{TRACKING_POINTS_MAX_DELAY} min</button>"
+            else:
+                return f"<button class='pure-button button-success'>≤{TRACKING_POINTS_MAX_DELAY} min</button>"
     except:
         return ERROR_BUTTON_HTML
 
 
 @app.route("/api/kmi-wmts-layers")
 async def api_kmi_wmts_layers():
-    session = await get_session()
-
     try:
-        resp = await session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
-        if not resp.status_code == 200:
-            resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        ns = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
-        layers = root.findall(".//wmts:Layer", ns)
-        layer_count = len(layers)
-        return f"<button class='pure-button button-success'>{layer_count} layers</button>"
+        async with get_session() as session:
+            resp = await session.get(KMI_WMTS_URL, params={"request": "getcapabilities"})
+            if not resp.status_code == 200:
+                resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+            ns = {"wmts": "http://www.opengis.net/wmts/1.0", "ows": "http://www.opengis.net/ows/1.1"}
+            layers = root.findall(".//wmts:Layer", ns)
+            layer_count = len(layers)
+            return f"<button class='pure-button button-success'>{layer_count} layers</button>"
     except:
         return ERROR_BUTTON_HTML
 
 
 @app.route("/api/csw-layers")
 async def api_csw_layers():
-    session = await get_session()
-
     try:
-        resp = await session.get(CSW_API)
-        resp.raise_for_status()
-        j = resp.json()
-        catalogue = len(j)
-        return f"<button class='pure-button button-success'>{catalogue} layers</button>"
+        async with get_session() as session:
+            resp = await session.get(CSW_API)
+            resp.raise_for_status()
+            j = resp.json()
+            catalogue = len(j)
+            return f"<button class='pure-button button-success'>{catalogue} layers</button>"
     except:
         return ERROR_BUTTON_HTML
 
 
 @app.route("/api/bfrs-status")
 async def api_bfrs_status():
-    session = await get_session()
-
     try:
-        resp = await session.get(BFRS_URL)
-        resp.raise_for_status()
-        return "<button class='pure-button button-success'>OK</button>"
+        async with get_session() as session:
+            resp = await session.get(BFRS_URL)
+            resp.raise_for_status()
+            return "<button class='pure-button button-success'>OK</button>"
     except:
         return ERROR_BUTTON_HTML
 
 
 @app.route("/api/auth2-status")
 async def api_auth2_status():
-    session = await get_session()
-
     try:
-        resp = await session.get(AUTH2_STATUS_URL)
-        resp.raise_for_status()
-        return "<button class='pure-button button-success'>OK</button>"
+        async with get_session() as session:
+            resp = await session.get(AUTH2_STATUS_URL)
+            resp.raise_for_status()
+            return "<button class='pure-button button-success'>OK</button>"
     except:
         return ERROR_BUTTON_HTML
 
 
 @app.route("/api/sss-status")
 async def api_sss_status():
-    session = await get_session()
-
     try:
-        resp = await session.get(SSS_URL)
-        resp.raise_for_status()
-        return "<button class='pure-button button-success'>OK</button>"
+        async with get_session() as session:
+            resp = await session.get(SSS_URL)
+            resp.raise_for_status()
+            return "<button class='pure-button button-success'>OK</button>"
     except:
         return ERROR_BUTTON_HTML
 
@@ -761,15 +753,14 @@ WMTS_PARAMS = {
 
 async def get_kb_layer(kb_layer) -> bool:
     """Query KB WMTS and return boolean if the service responds or not."""
-    params = WMTS_PARAMS
-    params["layer"] = kb_layer
-    session = await get_session()
+    params = {**WMTS_PARAMS, "layer": kb_layer}
 
     try:
-        resp = await session.get(KB_WMTS_URL, params=params, timeout=30)
-        if "ServiceExceptionReport" in str(resp.content):
-            return False
-        return True
+        async with get_session() as session:
+            resp = await session.get(KB_WMTS_URL, params=params, timeout=30)
+            if "ServiceExceptionReport" in str(resp.content):
+                return False
+            return True
     except:
         return False
 
@@ -794,10 +785,11 @@ async def get_kmi_layer(kmi_layer) -> bool:
     try:
         if prefix == "public":
             resp = httpx.get(KMI_WMTS_URL, params=params, timeout=30)
+            resp.raise_for_status()
         else:
-            session = await get_session()
-            resp = await session.get(KMI_WMTS_URL, params=params, timeout=30)
-        resp.raise_for_status()
+            async with get_session() as session:
+                resp = await session.get(KMI_WMTS_URL, params=params, timeout=30)
+                resp.raise_for_status()
         if "ServiceExceptionReport" in str(resp.content):
             return False
         return True
