@@ -88,6 +88,10 @@ def get_session(timeout: float = 10.0) -> httpx.AsyncClient:
     return httpx.AsyncClient(auth=(USER_SSO, PASS_SSO), timeout=timeout)
 
 
+def get_anonymous_session(timeout: float = 10.0) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=timeout)
+
+
 async def fetch_data(session, url, error_list, source_desc) -> Optional[Dict[str, Any]]:
     """Convenience function to query an authenticated endpoint, parse and return JSON."""
     try:
@@ -246,7 +250,8 @@ async def get_healthcheck() -> Dict[str, Any]:
                 "maxFeatures": 1,
                 "outputFormat": "application/json",
             }
-            resp = httpx.get(KMI_WFS_URL, params=params)
+            async with get_anonymous_session() as session:
+                resp = await session.get(KMI_WFS_URL, params=params)
             resp.raise_for_status()
             data = resp.json()
             d["todays_burns_count"] = data["totalFeatures"]
@@ -279,7 +284,8 @@ async def get_healthcheck() -> Dict[str, Any]:
                 url = f"{KMI_URL}/{path}"
                 try:
                     if prefix == "public":
-                        resp = httpx.get(url, params=wms_params)
+                        async with get_anonymous_session() as anon:
+                            resp = await anon.get(url, params=wms_params)
                     else:
                         resp = await session.get(url, params=wms_params, timeout=30)
                     resp.raise_for_status()
@@ -679,7 +685,8 @@ async def api_todays_burns():
 
     # Public service, so we need to send an anonymous request.
     try:
-        resp = httpx.get(KMI_WFS_URL, params=params)
+        async with get_anonymous_session() as session:
+            resp = await session.get(KMI_WFS_URL, params=params)
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
         resp_d = {i[0]: i[1] for i in root.items()}
@@ -746,7 +753,8 @@ async def get_kmi_layer(kmi_layer) -> bool:
 
     try:
         if prefix == "public":
-            resp = httpx.get(KMI_WMTS_URL, params=params, timeout=30)
+            async with get_anonymous_session(timeout=30) as anon:
+                resp = await anon.get(KMI_WMTS_URL, params=params)
             resp.raise_for_status()
         else:
             async with get_session() as session:
