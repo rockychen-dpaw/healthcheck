@@ -323,7 +323,7 @@ async def get_healthcheck() -> Dict[str, Any]:
                     else:
                         d[kb_layer] = False
                         d["success"] = False
-                        d["errors"].append(f"Error querying KMI layer {kb_layer}")
+                        d["errors"].append(f"Error querying KB layer {kb_layer}")
                 except Exception:
                     d[kb_layer] = False
                     d["success"] = False
