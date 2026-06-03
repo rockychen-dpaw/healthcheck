@@ -223,6 +223,19 @@ async def test_prtg_rate_channel_below_minimum(test_client):
     assert channels["Fleetcare tracking rate"].get("error") == 1
 
 
+@pytest.mark.asyncio
+async def test_prtg_sss_status_false(test_client):
+    """Test that the SSS status channel has error=1 and the top-level error is 1 when sss_status is False."""
+    data = {**SAMPLE_HEALTHCHECK, "success": False, "sss_status": False}
+    with patch("status.get_healthcheck", new=AsyncMock(return_value=data)):
+        response = await test_client.get("/prtg")
+    assert response.status_code == 200
+    body = await response.get_json()
+    assert body["prtg"]["error"] == 1
+    channels = {ch["channel"]: ch for ch in body["prtg"]["result"]}
+    assert channels["SSS status"].get("error") == 1
+
+
 # --- /api/<source>/latest ---
 
 
