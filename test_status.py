@@ -172,18 +172,6 @@ async def test_prtg_success(test_client):
 
 
 @pytest.mark.asyncio
-async def test_prtg_failure(test_client):
-    """Test the /prtg endpoint sets error=1 and includes error text when checks fail."""
-    data = {**SAMPLE_HEALTHCHECK, "success": False, "errors": ["Something went wrong"]}
-    with patch("status.get_healthcheck", new=AsyncMock(return_value=data)):
-        response = await test_client.get("/prtg")
-    assert response.status_code == 200
-    body = await response.get_json()
-    assert body["prtg"]["error"] == 1
-    assert "Something went wrong" in body["prtg"]["text"]
-
-
-@pytest.mark.asyncio
 async def test_prtg_exception(test_client):
     """Test the /prtg endpoint returns an error PRTG response when get_healthcheck raises."""
     with patch("status.get_healthcheck", new=AsyncMock(side_effect=Exception("failure"))):
@@ -226,7 +214,7 @@ async def test_prtg_rate_channel_below_minimum(test_client):
 @pytest.mark.asyncio
 async def test_prtg_sss_status_false(test_client):
     """Test that the SSS status channel has error=1 and the top-level error is 1 when sss_status is False."""
-    data = {**SAMPLE_HEALTHCHECK, "success": False, "sss_status": False}
+    data = {**SAMPLE_HEALTHCHECK, "sss_status": False}
     with patch("status.get_healthcheck", new=AsyncMock(return_value=data)):
         response = await test_client.get("/prtg")
     assert response.status_code == 200

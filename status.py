@@ -482,6 +482,7 @@ async def healthcheck_json():
 # Protected by external SSO at the ingress level. Not accessible without authentication.
 @app.route("/prtg")
 async def healthcheck_prtg():
+    """Returns a JSON response suitable for a PRTG sensor. Only the SSS system itself being offline should result in this sensor being 'Down'."""
     try:
         data = await get_healthcheck()
         channels = build_prtg_channels(data)
@@ -490,12 +491,10 @@ async def healthcheck_prtg():
             "prtg": {
                 "result": channels,
                 "text": "; ".join(errors) if errors else "All checks passed",
-                "error": 0 if data.get("success") else 1,
+                "error": 0 if data.get("sss_status") else 1,
             }
         }
         response = jsonify(prtg_response)
-        if CACHE_RESPONSE:
-            response.headers["Cache-Control"] = "max-age=60"
         return response
     except:
         LOGGER.exception("Error building PRTG healthcheck response")
