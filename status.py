@@ -351,6 +351,102 @@ async def get_healthcheck() -> Dict[str, Any]:
         return d
 
 
+def build_prtg_channels(data: Dict[str, Any]) -> list:
+    """Transform a get_healthcheck() result into a list of PRTG channel dicts."""
+
+    def delay_channel(name: str, value_min, max_delay: int = None) -> Dict[str, Any]:
+        """A channel having a time value that represent a delay/last-seen occurrence (optional maximum)."""
+        ch: Dict[str, Any] = {
+            "channel": name,
+            "value": value_min if value_min is not None else 0,
+            "unit": "Custom",
+            "customunit": "min",
+            "float": 1,
+        }
+        if value_min is None:
+            ch["error"] = 1
+        elif max_delay is not None and value_min > max_delay:
+            ch["error"] = 1
+        return ch
+
+    def rate_channel(name: str, value, min_val: int = None) -> Dict[str, Any]:
+        """A channel having a rate/frequency of units (optional minimum)."""
+        ch: Dict[str, Any] = {"channel": name, "value": value if value is not None else 0, "unit": "Custom", "customunit": "points/min"}
+        if value is None:
+            ch["error"] = 1
+        elif min_val is not None and value < min_val:
+            ch["error"] = 1
+        return ch
+
+    def count_channel(name: str, value, min_val: int = None) -> Dict[str, Any]:
+        """A channel having an integer count (optional minimum)."""
+        ch: Dict[str, Any] = {"channel": name, "value": value if value is not None else 0, "unit": "Count"}
+        if value is None:
+            ch["error"] = 1
+        elif min_val is not None and value < min_val:
+            ch["error"] = 1
+        return ch
+
+    def status_channel(name: str, value) -> Dict[str, Any]:
+        """A channel having a boolean status."""
+        ok = bool(value)
+        ch: Dict[str, Any] = {"channel": name, "value": 1 if ok else 0, "unit": "Custom", "customunit": "status"}
+        if not ok:
+            ch["error"] = 1
+        return ch
+
+    channels = [
+        # Resource tracking delays
+        delay_channel("All tracking devices delay", data.get("latest_point_age_min"), TRACKING_POINTS_MAX_DELAY),
+        delay_channel("Iridium delay", data.get("iridium_latest_point_age_min")),
+        rate_channel("Iridium tracking rate", data.get("iridium_loggedpoint_rate_min")),
+        delay_channel("TracPlus delay", data.get("tracplus_latest_point_delay")),
+        rate_channel("TracPlus tracking rate", data.get("tracplus_loggedpoint_rate_min")),
+        delay_channel("DFES delay", data.get("dfes_latest_point_delay")),
+        rate_channel("DFES tracking rate", data.get("dfes_loggedpoint_rate_min"), min_val=1),
+        delay_channel("Fleetcare delay", data.get("fleetcare_latest_point_delay"), TRACKING_POINTS_MAX_DELAY),
+        rate_channel("Fleetcare tracking rate", data.get("fleetcare_loggedpoint_rate_min"), min_val=1),
+        delay_channel("Netstar delay", data.get("netstar_latest_point_delay")),
+        rate_channel("Netstar tracking rate", data.get("netstar_loggedpoint_rate_min")),
+        # Service statuses
+        # count_channel("CSW catalogue count", data.get("csw_catalogue_count")),
+        count_channel("Today's burns count", data.get("todays_burns_count")),
+        status_channel("BFRS status", data.get("bfrs_profile_api_endpoint")),
+        status_channel("Auth2 status", data.get("auth2_status")),
+        status_channel("SSS status", data.get("sss_status")),
+    ]
+
+    # KMI layers
+    for layer_name, label in [
+        (COG_BASEMAP_LAYER, "COG basemap layer"),
+        (STATE_BASEMAP_LAYER, "State basemap layer"),
+        (DAILY_ACTIVE_BURNS_LAYER, "Daily active burns layer"),
+    ]:
+        if layer_name:
+            channels.append(status_channel(label, data.get(layer_name)))
+
+    # KB layers
+    for layer_name, label in [
+        (DBCA_INCIDENT_MAPPING_POLYGONS, "DBCA Incident Mapping polygons layer"),
+        (DBCA_INCIDENT_MAPPING_LINES, "DBCA Incident Mapping lines layer"),
+        (DBCA_INCIDENT_MAPPING_POINTS, "DBCA Incident Mapping points layer"),
+        (DFES_GOING_BUSHFIRES_LAYER, "DFES Going Bushfires layer"),
+        (ALL_CURRENT_HOTSPOTS_LAYER, "All current hotspots layer"),
+        (LIGHTNING_24H_LAYER, "Lightning 24h layer"),
+        (LIGHTNING_24_48H_LAYER, "Lightning 24-48h layer"),
+        (LIGHTNING_48_72H_LAYER, "Lightning 48-72h layer"),
+        (FUEL_AGE_1_6Y_LAYER, "Fuel age 1-6+ years layer"),
+        (FUEL_AGE_NONFOREST_1_6Y_LAYER, "Fuel age non-forest 1-6+ years layer"),
+        (DBCA_BURN_PROGRAM_LAYER, "DBCA burn program layer"),
+        (DBCA_LANDS_WATERS_LAYER, "DBCA legislated lands and waters layer"),
+        (DBCA_LANDS_WATERS_INTEREST_LAYER, "DBCA lands and waters of interest layer"),
+    ]:
+        if layer_name:
+            channels.append(status_channel(label, data.get(layer_name)))
+
+    return channels
+
+
 # Intentionally public: used by Kubernetes readiness probes.
 @app.route("/readyz")
 async def readiness():
@@ -381,6 +477,29 @@ async def healthcheck_json():
                 "success": False,
             }
         )
+
+
+# Protected by external SSO at the ingress level. Not accessible without authentication.
+@app.route("/prtg")
+async def healthcheck_prtg():
+    try:
+        data = await get_healthcheck()
+        channels = build_prtg_channels(data)
+        errors = data.get("errors", [])
+        prtg_response = {
+            "prtg": {
+                "result": channels,
+                "text": "; ".join(errors) if errors else "All checks passed",
+                "error": 0 if data.get("success") else 1,
+            }
+        }
+        response = jsonify(prtg_response)
+        if CACHE_RESPONSE:
+            response.headers["Cache-Control"] = "max-age=60"
+        return response
+    except:
+        LOGGER.exception("Error building PRTG healthcheck response")
+        return jsonify({"prtg": {"result": [], "text": "Internal error", "error": 1}})
 
 
 # Retain legacy health check route for PRTG.

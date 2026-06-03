@@ -6,7 +6,6 @@ import pytest
 
 from status import app
 
-
 # --- Fixtures ---
 
 
@@ -19,11 +18,7 @@ def test_client():
 # --- Helpers ---
 
 # Minimal XML with 3 WMTS layers for /api/kmi-wmts-layers tests.
-KMI_WMTS_XML = (
-    b'<Capabilities xmlns:wmts="http://www.opengis.net/wmts/1.0">'
-    b"<wmts:Layer/><wmts:Layer/><wmts:Layer/>"
-    b"</Capabilities>"
-)
+KMI_WMTS_XML = b'<Capabilities xmlns:wmts="http://www.opengis.net/wmts/1.0"><wmts:Layer/><wmts:Layer/><wmts:Layer/></Capabilities>'
 
 # Minimal healthcheck dict mirroring the shape returned by get_healthcheck().
 SAMPLE_HEALTHCHECK = {
@@ -47,7 +42,6 @@ SAMPLE_HEALTHCHECK = {
     "netstar_latest_point": "2026-01-01T00:00:00+08:00",
     "netstar_latest_point_delay": 5.0,
     "netstar_loggedpoint_rate_min": 10,
-    "csw_catalogue_count": 50,
     "todays_burns_count": 5,
     "bfrs_profile_api_endpoint": True,
     "auth2_status": True,
@@ -148,6 +142,85 @@ async def test_legacy_failure(test_client):
         response = await test_client.get("/legacy")
     assert response.status_code == 200
     assert b"something is wrong" in response.response.data
+
+
+# --- /api/<source>/latest ---
+
+
+@pytest.mark.asyncio
+async def test_prtg_success(test_client):
+    """Test the /prtg endpoint returns valid PRTG JSON with channels on success."""
+    with patch("status.get_healthcheck", new=AsyncMock(return_value=SAMPLE_HEALTHCHECK)):
+        response = await test_client.get("/prtg")
+    assert response.status_code == 200
+    data = await response.get_json()
+    assert "prtg" in data
+    assert data["prtg"]["error"] == 0
+    assert data["prtg"]["text"] == "All checks passed"
+    channels = data["prtg"]["result"]
+    assert isinstance(channels, list)
+    assert len(channels) > 0
+    channel_names = [ch["channel"] for ch in channels]
+    assert "All tracking devices delay" in channel_names
+    assert "Iridium delay" in channel_names
+    assert "BFRS status" in channel_names
+    assert "Auth2 status" in channel_names
+    assert "SSS status" in channel_names
+    for ch in channels:
+        assert "channel" in ch
+        assert "value" in ch
+
+
+@pytest.mark.asyncio
+async def test_prtg_failure(test_client):
+    """Test the /prtg endpoint sets error=1 and includes error text when checks fail."""
+    data = {**SAMPLE_HEALTHCHECK, "success": False, "errors": ["Something went wrong"]}
+    with patch("status.get_healthcheck", new=AsyncMock(return_value=data)):
+        response = await test_client.get("/prtg")
+    assert response.status_code == 200
+    body = await response.get_json()
+    assert body["prtg"]["error"] == 1
+    assert "Something went wrong" in body["prtg"]["text"]
+
+
+@pytest.mark.asyncio
+async def test_prtg_exception(test_client):
+    """Test the /prtg endpoint returns an error PRTG response when get_healthcheck raises."""
+    with patch("status.get_healthcheck", new=AsyncMock(side_effect=Exception("failure"))):
+        response = await test_client.get("/prtg")
+    assert response.status_code == 200
+    body = await response.get_json()
+    assert body["prtg"]["error"] == 1
+
+
+@pytest.mark.asyncio
+async def test_prtg_channel_error_on_null(test_client):
+    """Test that channels have error=1 when their source values are None."""
+    data = {
+        **SAMPLE_HEALTHCHECK,
+        "latest_point_age_min": None,
+        "bfrs_profile_api_endpoint": None,
+    }
+    with patch("status.get_healthcheck", new=AsyncMock(return_value=data)):
+        response = await test_client.get("/prtg")
+    assert response.status_code == 200
+    body = await response.get_json()
+    channels = {ch["channel"]: ch for ch in body["prtg"]["result"]}
+    assert channels["All tracking devices delay"].get("error") == 1
+    assert channels["BFRS status"].get("error") == 1
+
+
+@pytest.mark.asyncio
+async def test_prtg_rate_channel_below_minimum(test_client):
+    """Test that a rate channel has error=1 when its value is below the supplied minimum."""
+    data = {**SAMPLE_HEALTHCHECK, "fleetcare_loggedpoint_rate_min": 0}
+    with patch("status.get_healthcheck", new=AsyncMock(return_value=data)):
+        response = await test_client.get("/prtg")
+    assert response.status_code == 200
+    body = await response.get_json()
+    # Fleetcare tracking rate channel uses min_val=1 in build_prtg_channels
+    channels = {ch["channel"]: ch for ch in body["prtg"]["result"]}
+    assert channels["Fleetcare tracking rate"].get("error") == 1
 
 
 # --- /api/<source>/latest ---
