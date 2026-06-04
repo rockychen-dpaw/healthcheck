@@ -585,6 +585,13 @@ def jsonstatus(system):
     details = request.args.get("details") or ""
     return healthcheck.get_view(viewkey).get_jsonstatus(details.lower() == "true"),200,{"Content-Type":"application/json"}
 
+@app.route("/healthcheck/prtg",defaults={'system': None})
+@app.route("/healthcheck/prtg/<system>")
+def prtg(system):
+    viewkey = system or request.headers.get("X-email")
+    details = request.args.get("details") or ""
+    return healthcheck.get_view(viewkey).get_prtgdata(details.lower() == "true"),200,{"Content-Type":"application/json"}
+
 @app.route("/healthcheck/config/healthstatusstream")
 async def editinghealthstatusstream():
     editable = await can_admin(request)

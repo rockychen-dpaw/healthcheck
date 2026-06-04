@@ -117,7 +117,7 @@ class HealthCheckStatus(object):
     @staticmethod
     def deserialize(data):
         """
-        data:a json string with pattern: [check start,check end,health status, msg, persistent]
+        data:a json string with pattern: [check start,check end,health status, msg,prtgdata, persistent]
         """
         if not data:
             return None
@@ -508,6 +508,18 @@ class ServiceHealthCheck(UserDict):
         return self['id']
 
     @property
+    def critical(self):
+        return self['critical']
+
+    @property
+    def prtg(self):
+        return self['prtg']
+
+    @property
+    def offset(self):
+        return self['offset']
+
+    @property
     def method(self):
         return self['method']
 
@@ -569,9 +581,14 @@ class ServiceHealthCheck(UserDict):
         return status[1][3] if status and status[1] else ""
 
     @property
+    def healthstatus_prtgdata(self):
+        status = self.healthstatus
+        return status[1][4] if status and status[1] else None
+
+    @property
     def healthstatus_persistent(self):
         status = self.healthstatus
-        return status[1][4] if status and status[1] else ""
+        return status[1][5] if status and status[1] else ""
 
     @property
     def healthstatus_checkstart(self):
@@ -606,14 +623,14 @@ class ServiceHealthCheck(UserDict):
     def healthdetailpersistent(self):
         return self["healthdetailpersistent"]
 
-    def get_nextchecktime(self,last_checkingtime,now=None,today=None,tomorrow=None,seconds_in_day=None):
+    def get_nextchecktime(self,offset,last_checkingtime,now=None,today=None,tomorrow=None,seconds_in_day=None):
         if not now:
             now = utils.now()
             today = datetime(year = now.year,month=now.month,day=now.day,tzinfo=settings.TZ)
             tomorrow = today + timedelta(days=1)
             seconds_in_day = int((now - today).total_seconds())
 
-        next_checktime_seconds = seconds_in_day - (seconds_in_day % self.interval)
+        next_checktime_seconds = seconds_in_day - (seconds_in_day % self.interval) + offset
         next_checktime = today + timedelta(seconds=next_checktime_seconds)
 
         if last_checkingtime and next_checktime <= last_checkingtime:
@@ -695,7 +712,7 @@ class ServiceHealthCheck(UserDict):
     def load_checkinghistory(self):
         last_healthcheck = self.healthcheckpages.last_healthcheck
 
-        next_checktime = self.get_nextchecktime(last_healthcheck[0] if last_healthcheck else None)
+        next_checktime = self.get_nextchecktime(self["offset"],last_healthcheck[0] if last_healthcheck else None)
         self["healthstatus"] = [next_checktime,last_healthcheck] 
 
 
@@ -718,7 +735,37 @@ class JsonStatusMixin(object):
                     sectiondata[service.serviceid] = service.healthstatus_name
         return data
 
-class HealthCheck(JsonStatusMixin):
+class PRTGMixin(object):
+    def get_prtgdata(self,details=False):
+        data = {"error":0,"result":[],"text":"All checks passed"}
+        failed_services = []
+        warning_services = []
+        for section in self.healthchecksections:
+            for service in section.healthcheckservices:
+                prtgdata = dict(service.prtg)
+                if service.healthstatus_prtgdata is not None:
+                    prtgdata["value"] = service.healthstatus_prtgdata
+
+                data["result"].append(prtgdata)
+                if service.healthstatus_name in ("red","error"):
+                    if service.critical:
+                        data["error"] = 1
+                    failed_services.append(service.servicename)
+                elif service.healthstatus_name  == "yellow":
+                    warning_services.append(service.name)
+
+
+        if failed_services or warning_services:
+            if failed_services and warning_services:
+                data["text"] = "The services({}) are not available; The services({}) aren't healthy.".format(failed_services,warning_services)
+            elif failed_services:
+                data["text"] = "The services({}) are not available.".format(failed_services)
+            else:
+                data["text"] = "The services({}) aren't healthy.".format(warning_services)
+
+        return {"prtg":data}
+
+class HealthCheck(PRTGMixin,JsonStatusMixin):
     configfile = None
     _checkingstatus_loaded = False
     def __init__(self,configfile=settings.HEALTHCHECK_CONFIGFILE):
@@ -860,6 +907,14 @@ class HealthCheck(JsonStatusMixin):
 
             config["checkingtime"] = basecheckingtime
 
+            try:
+                baseoffset = int(config.get("offset") or 0)
+            except Exception as ex:
+                errors.append("Section {}({}): The offset({}) is incorrect.{}".format(sectionindex,sectionid,config.get("offset"),str(ex)))
+                baseoffset = 0
+
+            config["offset"] = baseoffset
+
             baseheaders = config.get("headers")
             if not baseheaders:
                 baseheaders = {}
@@ -989,6 +1044,13 @@ class HealthCheck(JsonStatusMixin):
                     checkingtime = basecheckingtime
                 service["checkingtime"] = checkingtime
 
+                try:
+                    offset = int(service.get("offset") or baseoffset)
+                except Exception as ex:
+                    errors.append("Service {0}({1}).{2}: The offset({3}) is incorrect.{4}".format(sectionindex,sectionid,serviceindex,service.get("offset"),str(ex)))
+                    offset = baseoffset
+                service["offset"] = offset
+
                 location = service.get("location")
                 location = location.strip() if location else None
                 if not location and not baseurl:
@@ -1075,9 +1137,17 @@ class HealthCheck(JsonStatusMixin):
                             del config["services"][serviceid]["healthchecks"][key]
                             continue
                         if isinstance(service["healthchecks"][key],(list,tuple)):
-                            service["healthchecks"][key] = [checks.init_conds(service["healthchecks"][key]),checks.get_message_factory(None)]
+                            service["healthchecks"][key] = [
+                                checks.init_conds(service["healthchecks"][key]),
+                                checks.get_message_factory(None),
+                                checks.get_prtg_factory(None)
+                            ]
                         else:
-                            service["healthchecks"][key] = [checks.init_conds(service["healthchecks"][key].get("condition")),checks.get_message_factory(service["healthchecks"][key].get('message'))]
+                            service["healthchecks"][key] = [
+                                checks.init_conds(service["healthchecks"][key].get("condition")),
+                                checks.get_message_factory(service["healthchecks"][key].get('message')),
+                                checks.get_prtg_factory(service["healthchecks"][key].get('prtg'))
+                            ]
                     except Exception as ex:
                         traceback.print_exc()
                         errors.append("Service {0}({1}).{2}({3}): The config({4}) in healthchecks is in valid.{5}: {6}".format(sectionindex,sectionid,serviceindex,serviceid,key,ex.__class__.__name__,str(ex)))
@@ -1110,6 +1180,14 @@ class HealthCheck(JsonStatusMixin):
                 else:
                     method = basemethod
                 service["method"] = method
+
+                service["critical"] = service.get("critical",False)
+                service["prtg"] = service.get("prtg") or {
+                    "customunit":"status",
+                    "unit":"Custom",
+                    "value": 0
+                }
+                service["prtg"]["channel"] = service["prtg"].get("channel") or service["name"]
 
 
                 if service.get("historyexpire") > 0:
@@ -1198,7 +1276,7 @@ class HealthCheck(JsonStatusMixin):
                     logger.debug("{} : Run a task to check the service({}.{})  to task runner.".format(self,service.sectionid,service.serviceid))
                     task = taskcls(service,*args)
                     asyncio.create_task(task.run())
-                    next_checktime = service.get_nextchecktime(service["healthstatus"][0],now,today,tomorrow,seconds_in_day)
+                    next_checktime = service.get_nextchecktime(service["offset"],service["healthstatus"][0],now,today,tomorrow,seconds_in_day)
                     service["healthstatus"][0] = next_checktime
                 else:
                     next_checktime = service["healthstatus"][0]
@@ -1242,20 +1320,21 @@ class HealthCheck(JsonStatusMixin):
         for key in ("green","yellow","red","error"):
             if key not in serviceconfig["healthchecks"]:
                 continue
-            checkconditions,get_checkmessage = serviceconfig["healthchecks"][key]
+            checkconditions,get_checkmessage,get_prtgdata = serviceconfig["healthchecks"][key]
             try:
                 if settings.HEALTHCHECK_CONDITION_VERBOSE:
                     messages.clear()
                 checkresult =  checks.check(res,checkconditions,messages=messages)
                 if checkresult:
                     checkmsg = get_checkmessage(res)
+                    prtgdata = get_prtgdata(res)
                     if not isinstance(checkmsg,str):
                         checkmsg = json.dumps(checkmsg,indent=4,cls=serializers.JSONFormater)
                     if settings.DEBUG and messages:
                         msg = "{}\nThe following conditions are checked.\n    {}".format(checkmsg,"\n    ".join(messages))
                     else:
                         msg = checkmsg
-                    healthstatus = [key,msg]
+                    healthstatus = [key,msg,prtgdata]
                     break
                 else:
                     """
@@ -1269,7 +1348,7 @@ class HealthCheck(JsonStatusMixin):
 
             except Exception as ex:
                 traceback.print_exc()
-                healthstatus = ["error","Failed to check health status '{}'.{}:{}".format(key,ex.__class__.__name__,str(ex))]
+                healthstatus = ["error","Failed to check health status '{}'.{}:{}".format(key,ex.__class__.__name__,str(ex)),None]
                 break
     
         if not healthstatus:
@@ -1279,9 +1358,9 @@ class HealthCheck(JsonStatusMixin):
                     message = res.text
                 else:
                     message = "non-text response"
-                healthstatus = ["error","Status Code:{}, Message:{}".format(res.status_code,message)]
+                healthstatus = ["error","Status Code:{}, Message:{}".format(res.status_code,message),None]
             else:
-                healthstatus = ["error","All healthstatus configured in {} are not satisfied.".format(serviceconfig)]
+                healthstatus = ["error","All healthstatus configured in {} are not satisfied.".format(serviceconfig),None]
     
         return healthstatus
 
@@ -1488,7 +1567,7 @@ class SectionHealthCheckView(object):
     def selectablehealthcheckservices(self):
         return map(lambda service: SelectableServiceHealthCheck(service,self._viewsettings is not None and service.serviceid in self._viewsettings),self._sectionhealthcheck.healthcheckservices)
 
-class HealthCheckView(JsonStatusMixin):
+class HealthCheckView(PRTGMixin,JsonStatusMixin):
     def __init__(self,healthcheck,viewmeta,viewsettings):
         self._healthcheck = healthcheck
         self._viewmeta = viewmeta
@@ -1507,24 +1586,6 @@ class HealthCheckView(JsonStatusMixin):
     @property
     def selectablehealthchecksections(self):
         return map(lambda section: SectionHealthCheckView(section,self._viewsettings.get(section.sectionid,set()) if self._viewsettings else None ), self._healthcheck.healthchecksections)
-
-    def get_jsonstatus(self,details=False):
-        data = {}
-        for section in self.healthchecksections:
-            sectiondata = {}
-            data[section.sectionid] = sectiondata
-            for service in section.healthcheckservices:
-                if details:
-                    sectiondata[service.serviceid] = {
-                        'status': service.healthstatus_name,
-                        'starttime': service.healthstatus_checkstart,
-                        'endtime': service.healthstatus_checkend,
-                        'message':service.healthstatus_info,
-                        'nextcheck':service.healthstatus_nextcheck
-                    }
-                else:
-                    sectiondata[service.serviceid] = service.healthstatus_name
-        return data
 
 class ReleasedHealthCheck(HealthCheck):
 
