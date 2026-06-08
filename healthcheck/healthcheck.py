@@ -27,6 +27,7 @@ from .locks import FileLock
 logger = logging.getLogger("healthcheck.healthcheck")
 
 #urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+PRTG_DATA_NOT_AVAILABLE = "__NULL__"
 
 class BaseServiceHealthCheckTask(object):
     def __init__(self,servicehealthcheck):
@@ -47,36 +48,43 @@ class BaseServiceHealthCheckTask(object):
 
     async def run(self):
         starttime = utils.now()
+        endtime = None
         res = None
-        try:
+        if self.servicehealthcheck.url:
             try:
-                res = None
-                data = None
-                #logger.debug("{} : Start to run the healthcheck task({})".format(self.servicehealthcheck,self.__class__.__name__))
-                async with httpx.AsyncClient(auth=self.servicehealthcheck.auth,timeout=self.servicehealthcheck.timeout,verify=self.servicehealthcheck.sslverify,headers=self.servicehealthcheck.headers) as client:
-                    if self.servicehealthcheck.method == "GET":
-                        func = client.get
-                    elif self.servicehealthcheck.method == "POST":
-                        func = client.post
-                        data = self.servicehealthcheck.formdata
-                    elif self.servicehealthcheck.method == "PUT":
-                        func = client.put
-                        data = self.servicehealthcheck.formdata
-                    elif self.servicehealthcheck.method == "DELETE":
-                        func = client.delete
-                    else:
-                        #Not support
-                        raise Exception("Http method({}) Not Support".format(self.method))
-                    if data:
-                        res = await func(self.servicehealthcheck.url,data=data)
-                    else:
-                        res = await func(self.servicehealthcheck.url)
-            finally:
-                endtime = utils.now()
-
-            healthstatus = HealthCheck.check_response(self.servicehealthcheck,res)
-        except Exception as ex:
-            healthstatus = ["error","{} : {}".format(ex.__class__.__name__,str(ex))]
+                try:
+                    res = None
+                    data = None
+                    #logger.debug("{} : Start to run the healthcheck task({})".format(self.servicehealthcheck,self.__class__.__name__))
+                    async with httpx.AsyncClient(auth=self.servicehealthcheck.auth,timeout=self.servicehealthcheck.request_timeout,verify=self.servicehealthcheck.sslverify,headers=self.servicehealthcheck.headers) as client:
+                        if self.servicehealthcheck.method == "GET":
+                            func = client.get
+                        elif self.servicehealthcheck.method == "POST":
+                            func = client.post
+                            data = self.servicehealthcheck.formdata
+                        elif self.servicehealthcheck.method == "PUT":
+                            func = client.put
+                            data = self.servicehealthcheck.formdata
+                        elif self.servicehealthcheck.method == "DELETE":
+                            func = client.delete
+                        else:
+                            #Not support
+                            raise Exception("Http method({}) Not Support".format(self.method))
+                        if data:
+                            res = await func(self.servicehealthcheck.url,data=data)
+                        else:
+                            res = await func(self.servicehealthcheck.url)
+                finally:
+                    endtime = utils.now()
+    
+                healthstatus = HealthCheck.check_response(self.servicehealthcheck,res)
+            except Exception as ex:
+                healthstatus = ["error","{} : {}".format(ex.__class__.__name__,str(ex)),None]
+                if not endtime:
+                    endtime = utils.now()
+        else:
+            healthstatus = ["green","OK",None]
+            endtime = utils.now()
 
         healthstatus.insert(0,starttime)
         healthstatus.insert(1,endtime)
@@ -291,6 +299,30 @@ class LastHealthCheck(HealthCheckPage):
 
         return True
 
+class LastHealthCheckInMemory(LastHealthCheck):
+
+    def detailfile(self,starttime):
+        return ""
+
+    def save(self,healthcheckstatus):
+        """
+        The data is in memeory, no need to save
+        Return True if write; Return False if the page is already full and can't write anymore.
+        """
+        self._size = 1
+
+        self._last_healthcheck = healthcheckstatus
+
+        return True
+
+    def _load(self):
+        """
+        Never persistent the data to file system
+        no need to load the data
+
+        """
+        self._size = 0
+
 class HealthCheckPages(object):
     """
     pages: a list of page data([startdatetime,page file])
@@ -381,7 +413,10 @@ class HealthCheckPages(object):
             return os.path.join(self.basedir,"latesthealthcheck.json")
 
     def _load(self):
-        if not self.historyenabled:
+        if not self._servicehealthcheck.url:
+            #is not a real healthcheck,for example: heartbeat
+            self._pages = [LastHealthCheckInMemory(self,self.pagefile(None))]
+        elif not self.historyenabled:
             self._pages = [LastHealthCheck(self,self.pagefile(None))]
         else:
             pages = []
@@ -547,8 +582,12 @@ class ServiceHealthCheck(UserDict):
         return self.get("user")
 
     @property
+    def request_timeout(self):
+        return self["request_timeout"]
+
+    @property
     def timeout(self):
-        return self.get("timeout")
+        return self["timeout"]
 
     @property
     def sslverify(self):
@@ -583,12 +622,12 @@ class ServiceHealthCheck(UserDict):
     @property
     def healthstatus_prtgdata(self):
         status = self.healthstatus
-        return status[1][4] if status and status[1] else None
+        return status[1][4] if status and status[1] and len(status[1]) >= 5 else None
 
     @property
     def healthstatus_persistent(self):
         status = self.healthstatus
-        return status[1][5] if status and status[1] else ""
+        return status[1][-1] if status and status[1] else ""
 
     @property
     def healthstatus_checkstart(self):
@@ -611,7 +650,7 @@ class ServiceHealthCheck(UserDict):
     @property
     def healthstatus(self):
         """
-        return healthstatus [next checktime,[starttime,endtime,health status,health status message,health checking persistent?]] 
+        return healthstatus [next checktime,[starttime,endtime,health status,health status message,health checking persistent?],[prtg data]] 
         """
         return self.get("healthstatus")
 
@@ -718,21 +757,35 @@ class ServiceHealthCheck(UserDict):
 
 class JsonStatusMixin(object):
     def get_jsonstatus(self,details=False):
+        now = utils.now()
         data = {}
         for section in self.healthchecksections:
             sectiondata = {}
             data[section.sectionid] = sectiondata
             for service in section.healthcheckservices:
                 if details:
-                    sectiondata[service.serviceid] = {
-                        'status': service.healthstatus_name,
-                        'starttime': service.healthstatus_checkstart,
-                        'endtime': service.healthstatus_checkend,
-                        'message':service.healthstatus_info,
-                        'nextcheck':service.healthstatus_nextcheck
-                    }
+                    if service["healthstatus"][0] + timedelta(milliseconds=service["timeout"]) < now:
+                        sectiondata[service.serviceid] = {
+                            'status': "error",
+                            'starttime': "",
+                            'endtime': "",
+                            'message': "The service should be checked at '{}', but it didn't".format(service.healthstatus_nextcheck),
+                            'nextcheck':""
+                        }
+                    else:
+                        sectiondata[service.serviceid] = {
+                            'status': service.healthstatus_name,
+                            'starttime': service.healthstatus_checkstart,
+                            'endtime': service.healthstatus_checkend,
+                            'message':service.healthstatus_info,
+                            'nextcheck':service.healthstatus_nextcheck
+                        }
                 else:
-                    sectiondata[service.serviceid] = service.healthstatus_name
+                    if service["healthstatus"][0] + timedelta(milliseconds=service["timeout"]) < now:
+                        #the current healthstatus is outdated
+                        sectiondata[service.serviceid] = "error"
+                    else:
+                        sectiondata[service.serviceid] = service.healthstatus_name
         return data
 
 class PRTGMixin(object):
@@ -740,18 +793,46 @@ class PRTGMixin(object):
         data = {"error":0,"result":[],"text":"All checks passed"}
         failed_services = []
         warning_services = []
+        now = utils.now()
         for section in self.healthchecksections:
             for service in section.healthcheckservices:
-                prtgdata = dict(service.prtg)
-                if service.healthstatus_prtgdata is not None:
-                    prtgdata["value"] = service.healthstatus_prtgdata
+                if not service.url:
+                    continue
+                if service["healthstatus"][0] + timedelta(milliseconds=service["timeout"]) < now:
+                    #the current healthstatus is outdated
+                    prtgdata = None
+                    healthstatus_name = "error"
+                else:
+                    prtgdata = service.healthstatus_prtgdata
+                    healthstatus_name = service.healthstatus_name
 
-                data["result"].append(prtgdata)
-                if service.healthstatus_name in ("red","error"):
+                if service.prtg:
+                    if isinstance(service.prtg,list):
+                        for prtgchannel in service.prtg:
+                            if prtgdata == PRTG_DATA_NOT_AVAILABLE:
+                                #the prtg data for this prtg channel is not available.
+                                continue
+                            if prtgdata and prtgchannel["channel"] not in prtgdata:
+                                #the prtg data for this prtg channel is not available.
+                                continue
+                            prtgchannel = dict(prtgchannel)
+                            if prtgdata is not None and prtgdata[prtgchannel["channel"]] is not None:
+                                prtgchannel["value"] = prtgdata[prtgchannel["channel"]]
+
+                            data["result"].append(prtgchannel)
+                    else:
+                        if prtgdata != PRTG_DATA_NOT_AVAILABLE:
+                            prtgchannel = dict(service.prtg)
+                            if prtgdata is not None:
+                                prtgchannel["value"] = prtgdata
+
+                            data["result"].append(prtgchannel)
+
+                if healthstatus_name in ("red","error"):
                     if service.critical:
                         data["error"] = 1
                     failed_services.append(service.servicename)
-                elif service.healthstatus_name  == "yellow":
+                elif healthstatus_name  == "yellow":
                     warning_services.append(service.name)
 
 
@@ -877,6 +958,29 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             raise Exception("Healthcheck configurations should be a list object.{}".format(configs))
 
         sections = OrderedDict()
+        #add a fake service for healthcheck heartbeat
+        healthchecksection = {
+            "id": "Healthcheck",
+            "name": "",
+            "interval":settings.HEARTBEAT,
+            "healthdetailpersistent":[],
+            "historyexpire":0,
+            "services":{}
+        }
+        healthchecksection["services"]["Healthcheck-Heartbeat"] = ServiceHealthCheck(self,{
+            "section":healthchecksection,
+            "id":"Healthcheck-Heartbeat",
+            "name":"Healthcheck Heartbeat",
+            "interval":settings.HEARTBEAT,
+            "location":"",
+            "healthdetailpersistent":[],
+            "historyexpire":0,
+            "timeout":100,
+            "offset":0,
+            "checkingtime":None
+        })
+        sections[healthchecksection["id"]] = SectionHealthCheck(healthchecksection)
+       
 
         errors = []
 
@@ -936,11 +1040,14 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
     
             try:
                 basetimeout = config.get("timeout")
-                if basetimeout is not None and not isinstance(basetimeout,int):
+                if basetimeout is None:
+                    basetimeout = settings.HEALTHCHECKSERVICE_TIMEOUT
+                elif not isinstance(basetimeout,int):
                     basetimeout = int(str(basetimeout).strip())
                 config["timeout"] = basetimeout
             except Exception as ex:
                 errors.append("Section {}({}): The timeout({}) is not an integer.".format(sectionindex,sectionid,config.get("timeout")))
+                basetimeout = settings.HEALTHCHECKSERVICE_TIMEOUT
                 continue
 
             basemethod = config.get("method")
@@ -1010,6 +1117,33 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if not serviceid:
                     errors.append("Service {0}({1}).{2}: Missing property(id)".format(sectionindex,sectionid,serviceindex))
                     continue
+
+                if "user" not in service and config.get("user"):
+                    service["user"] = config["user"]
+    
+                if "password" not in service and config.get("password"):
+                    service["password"] = config["password"]
+    
+                if "sslverify" not in service:
+                    service["sslverify"] = config["sslverify"]
+                elif not isinstance(service["sslverify"],bool):
+                    service["sslverify"] = str(service["sslverify"]).lower() == "true"
+    
+    
+                if not service.get("name"):
+                    service["name"] = serviceid
+
+                method = service.get("method")
+                if method:
+                    method = method.upper()
+                    if method not in ["GET","POST","DELETE","PUT"]:
+                        errors.append("Service {0}({1}).{2}({3}): The method({}) doesn't support".format(sectionindex,sectionid,serviceindex,serviceid,method))
+                        continue
+                else:
+                    method = basemethod
+                service["method"] = method
+
+                service["critical"] = service.get("critical",False)
 
                 queryparameters = service.get("queryparameters")
                 if not queryparameters:
@@ -1101,16 +1235,113 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
                 try:
                     timeout = service.get("timeout")
-                    if timeout is not None:
-                        if not isinstance(timeout,int):
-                            timeout = int(str(timeout).strip())
-                            service["timeout"] = timeout
-                    else:
-                        service["timeout"] = basetimeout
+                    if timeout is None:
+                        timeout = basetimeout
+                    elif not isinstance(timeout,int):
+                        timeout = int(str(timeout).strip())
                 except Exception as ex:
                     errors.append("Service {0}({1}).{2}({3}): The timeout({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("timeout")))
+                    timeout = basetimeout
                     continue
+                service["timeout"] = timeout
+                service["request_timeout"] = timeout / 1000.0
 
+                service["prtg"] = service.get("prtg") or {
+                    "customunit":"status",
+                    "unit":"Custom",
+                    "value": 0
+                }
+                if isinstance(service["prtg"],list):
+                    if len(service["prtg"]) == 0:
+                        service["prtg"] = {
+                            "customunit":"status",
+                            "unit":"Custom",
+                            "value": 0
+                        }
+                    elif len(service["prtg"]) == 1:
+                        service["prtg"] = service.get("prtg")[0]
+
+                if isinstance(service["prtg"],list):
+                    for prtgconfig in service["prtg"]:
+                        prtgconfig["channel"] = prtgconfig.get("channel") or service["name"]
+                        prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
+                        prtgconfig["customunit"] = prtgconfig.get("customunit") or "status"
+                        prtgconfig["value"] = prtgconfig.get("value") or 0
+                else:
+                    service["prtg"]["channel"] = service["prtg"].get("channel") or service["name"]
+                    service["prtg"]["unit"] = service["prtg"].get("unit") or "Custom"
+                    service["prtg"]["customunit"] = service["prtg"].get("customunit") or "status"
+                    service["prtg"]["value"] = service["prtg"].get("value") or 0
+
+                if not service["healthchecks"]:
+                    errors.append("Service {0}({1}).{2}({3}): Missing healthcheck configuration".format(sectionindex,sectionid,serviceindex,serviceid))
+                    continue
+    
+                for key in list(service["healthchecks"].keys()):
+                    try:
+                        if key not in ("green","yellow","red","error"):
+                            errors.append("Service {0}({1}).{2}({3}): The health status({4}) in healthchecks is not in ('green','yellow','red','error')".format(sectionindex,sectionid,serviceindex,serviceid,key))
+                            del config["services"][serviceid]["healthchecks"][key]
+                            continue
+                        if isinstance(service["prtg"],list):
+                            if isinstance(service["healthchecks"][key],(list,tuple)):
+                                service["healthchecks"][key] = [
+                                    checks.init_conds(service["healthchecks"][key]),
+                                    checks.get_message_factory(None),
+                                    checks.get_prtg_factory(None)
+                                ]
+                            else:
+                                prtg_data_map = {}
+                                prtg_data_config = service["healthchecks"][key].get('prtg')
+                                if not prtg_data_config :
+                                    for prtg_config in service["prtg"]:
+                                        prtg_data_map[prtg_config["channel"]] = checks.get_prtg_factory(None) 
+                                elif isinstance(prtg_data_config,dict):
+                                    for prtg_config in service["prtg"]:
+                                        prtg_data_map[prtg_config["channel"]] = checks.get_prtg_factory(prtg_data_config[prtg_config["channel"]]) if prtg_data_config.get(prtg_config["channel"]) else None
+                                else:
+                                    for prtg_config in service["prtg"]:
+                                        prtg_data_map[prtg_config["channel"]] = checks.get_prtg_factory(prtg_data_config) 
+
+                                service["healthchecks"][key] = [
+                                    checks.init_conds(service["healthchecks"][key].get("condition")),
+                                    checks.get_message_factory(service["healthchecks"][key].get('message')),
+                                    prtg_data_map
+                                ]
+                        elif service["prtg"]:
+                            if isinstance(service["healthchecks"][key],(list,tuple)):
+                                service["healthchecks"][key] = [
+                                    checks.init_conds(service["healthchecks"][key]),
+                                    checks.get_message_factory(None),
+                                    checks.get_prtg_factory(None)
+                                ]
+                            else:
+                                service["healthchecks"][key] = [
+                                    checks.init_conds(service["healthchecks"][key].get("condition")),
+                                    checks.get_message_factory(service["healthchecks"][key].get('message')),
+                                    checks.get_prtg_factory(service["healthchecks"][key].get('prtg'))
+                                ]
+                        else:
+                            if isinstance(service["healthchecks"][key],(list,tuple)):
+                                service["healthchecks"][key] = [
+                                    checks.init_conds(service["healthchecks"][key]),
+                                    checks.get_message_factory(None),
+                                    None
+                                ]
+                            else:
+                                service["healthchecks"][key] = [
+                                    checks.init_conds(service["healthchecks"][key].get("condition")),
+                                    checks.get_message_factory(service["healthchecks"][key].get('message')),
+                                    None
+                                ]
+                    except Exception as ex:
+                        traceback.print_exc()
+                        errors.append("Service {0}({1}).{2}({3}): The config({4}) in healthchecks is in valid.{5}: {6}".format(sectionindex,sectionid,serviceindex,serviceid,key,ex.__class__.__name__,str(ex)))
+                        continue
+    
+                if not service["healthchecks"]:
+                    continue
+    
                 try:
                     historyexpire = service.get("historyexpire")
                     if historyexpire is not None:
@@ -1125,71 +1356,6 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 except Exception as ex:
                     errors.append("Service {0}({1}).{2}({3}): The historyexpire({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("historyexpire")))
                     continue
-
-                if not service["healthchecks"]:
-                    errors.append("Service {0}({1}).{2}({3}): Missing healthcheck configuration".format(sectionindex,sectionid,serviceindex,serviceid))
-                    continue
-    
-                for key in list(service["healthchecks"].keys()):
-                    try:
-                        if key not in ("green","yellow","red","error"):
-                            errors.append("Service {0}({1}).{2}({3}): The health status({4}) in healthchecks is not in ('green','yellow','red','error')".format(sectionindex,sectionid,serviceindex,serviceid,key))
-                            del config["services"][serviceid]["healthchecks"][key]
-                            continue
-                        if isinstance(service["healthchecks"][key],(list,tuple)):
-                            service["healthchecks"][key] = [
-                                checks.init_conds(service["healthchecks"][key]),
-                                checks.get_message_factory(None),
-                                checks.get_prtg_factory(None)
-                            ]
-                        else:
-                            service["healthchecks"][key] = [
-                                checks.init_conds(service["healthchecks"][key].get("condition")),
-                                checks.get_message_factory(service["healthchecks"][key].get('message')),
-                                checks.get_prtg_factory(service["healthchecks"][key].get('prtg'))
-                            ]
-                    except Exception as ex:
-                        traceback.print_exc()
-                        errors.append("Service {0}({1}).{2}({3}): The config({4}) in healthchecks is in valid.{5}: {6}".format(sectionindex,sectionid,serviceindex,serviceid,key,ex.__class__.__name__,str(ex)))
-                        continue
-    
-                if not service["healthchecks"]:
-                    continue
-    
-                if "user" not in service and config.get("user"):
-                    service["user"] = config["user"]
-    
-                if "password" not in service and config.get("password"):
-                    service["password"] = config["password"]
-    
-                if "sslverify" not in service:
-                    service["sslverify"] = config["sslverify"]
-                elif not isinstance(service["sslverify"],bool):
-                    service["sslverify"] = str(service["sslverify"]).lower() == "true"
-    
-    
-                if not service.get("name"):
-                    service["name"] = serviceid
-
-                method = service.get("method")
-                if method:
-                    method = method.upper()
-                    if method not in ["GET","POST","DELETE","PUT"]:
-                        errors.append("Service {0}({1}).{2}({3}): The method({}) doesn't support".format(sectionindex,sectionid,serviceindex,serviceid,method))
-                        continue
-                else:
-                    method = basemethod
-                service["method"] = method
-
-                service["critical"] = service.get("critical",False)
-                service["prtg"] = service.get("prtg") or {
-                    "customunit":"status",
-                    "unit":"Custom",
-                    "value": 0
-                }
-                service["prtg"]["channel"] = service["prtg"].get("channel") or service["name"]
-
-
                 if service.get("historyexpire") > 0:
                     healthdetailpersistent = service.get("healthdetailpersistent")
                     if healthdetailpersistent is not None:
@@ -1237,7 +1403,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
         for section in self.sections.values():
             for service in section["services"].values():
-                runner.add_task(taskcls(service,*args,**kwargs))
+                runner.add_task(taskcls(service,*args))
 
     def _schedule_continuous_check(self,taskcls,*args):
         shutdown.unregister_scheduled_task(self._continuous_check_task)
@@ -1315,6 +1481,9 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
     @classmethod
     def check_response(cls,serviceconfig,res):
+        """
+        Return [traffic light, msgs,prtg data]
+        """
         healthstatus = None
         messages = [] if settings.HEALTHCHECK_CONDITION_VERBOSE else None
         for key in ("green","yellow","red","error"):
@@ -1327,7 +1496,19 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 checkresult =  checks.check(res,checkconditions,messages=messages)
                 if checkresult:
                     checkmsg = get_checkmessage(res)
-                    prtgdata = get_prtgdata(res)
+                    if serviceconfig["prtg"]:
+                        if isinstance(serviceconfig["prtg"],list):
+                            prtgdata = {}
+                            for prtgchannel in serviceconfig["prtg"]:
+                                if get_prtgdata.get(prtgchannel["channel"]):
+                                    prtgdata[prtgchannel["channel"]] = get_prtgdata[prtgchannel["channel"]](res)
+                        elif get_prtgdata:
+                            prtgdata = get_prtgdata(res)
+                        else:
+                            prtgdata = PRTG_DATA_NOT_AVAILABLE
+                    else:
+                        prtgdata = PRTG_DATA_NOT_AVAILABLE
+
                     if not isinstance(checkmsg,str):
                         checkmsg = json.dumps(checkmsg,indent=4,cls=serializers.JSONFormater)
                     if settings.DEBUG and messages:

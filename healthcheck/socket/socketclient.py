@@ -20,9 +20,10 @@ logger = logging.getLogger("healthcheck.socketclient")
 class SocketClient(object):
     count = 0
     conn_type = None
-    def __init__(self,host=settings.HEALTHCHECKSERVER_HOST,port=settings.HEALTHCHECKSERVER_PORT):
+    def __init__(self,host=settings.HEALTHCHECKSERVER_HOST,port=settings.HEALTHCHECKSERVER_PORT,timeout=0):
         self.host = host
         self.port = port
+        self.timeout = timeout
         self.__class__.count += 1
         self.name = "{} socketclient({}:{})_{}".format(self.conn_type,self.host,self.port,self.count)
         self._conn = None #[reader,writer]
@@ -121,12 +122,19 @@ class SocketClient(object):
         """
         try:
             conn = await self.get_connection(reconnect_attempts)
-            await conn.send(data)
+            if self.timeout:
+                async with asyncio.timeout(self.timeout):
+                    await conn.send(data)
+            else:
+                await conn.send(data)
             return
         except exceptions.SystemShutdown as ex:
             await self.close()
             raise ex
         except exceptions.SocketClientTypeNotSupport as ex:
+            await self.close()
+            raise ex
+        except asyncio.TimeoutError as ex:
             await self.close()
             raise ex
         except Exception as ex:
@@ -142,7 +150,11 @@ class SocketClient(object):
         try:
             data = None
             conn = await self.get_connection(reconnect_attempts)
-            data = await conn.receive()
+            if self.timeout:
+                async with asyncio.timeout(self.timeout):
+                    data = await conn.receive()
+            else:
+                data = await conn.receive()
             logger.debug("{}: Succeed to receive the data: {}".format(self,data))
             return data
         except exceptions.SystemShutdown as ex:
@@ -152,6 +164,9 @@ class SocketClient(object):
             await self.close()
             raise ex
         except exceptions.MalformedData as ex:
+            raise ex
+        except asyncio.TimeoutError as ex:
+            await self.close()
             raise ex
         except Exception as ex:
             if not isinstance(ex,(exceptions.ConnectionClosed,ConnectionResetError,ConnectionResetError)):

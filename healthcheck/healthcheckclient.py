@@ -37,7 +37,7 @@ class Event(object):
 
 class BaseHealthStatusListenerClient(socket.SocketClient):
     def __init__(self):
-        super().__init__()
+        super().__init__(timeout = settings.HEARTBEAT + 2)
         self._statuslist = CycleList(settings.HEALTHSTATUS_BUFFER)
         self._healthstatus_task = None
         self._wait = Event()
