@@ -669,7 +669,8 @@ class ServiceHealthCheck(UserDict):
             tomorrow = today + timedelta(days=1)
             seconds_in_day = int((now - today).total_seconds())
 
-        next_checktime_seconds = seconds_in_day - (seconds_in_day % self.interval) + offset
+        next_checktime_seconds_without_offset = seconds_in_day - (seconds_in_day % self.interval)
+        next_checktime_seconds = next_checktime_seconds_without_offset + offset
         next_checktime = today + timedelta(seconds=next_checktime_seconds)
 
         if last_checkingtime and next_checktime <= last_checkingtime:
@@ -692,15 +693,15 @@ class ServiceHealthCheck(UserDict):
                 return next_checktime
             elif next_checktime_seconds < starttime:
                 if starttime % self.interval == 0:
-                    return next_checktime + timedelta(seconds=starttime - next_checktime_seconds)
+                    return next_checktime + timedelta(seconds=starttime - next_checktime_seconds_without_offset)
                 else:
-                    return next_checktime + timedelta(seconds=starttime + self.interval - (starttime % self.interval) - next_checktime_seconds)
+                    return next_checktime + timedelta(seconds=starttime + self.interval - (starttime % self.interval) - next_checktime_seconds_without_offset)
 
         #can't find the next check time in the same day, try next day
         if starttime % self.interval == 0:
-            return tomorrow + timedelta(seconds=checkingtime[0][0])
+            return tomorrow + timedelta(seconds=checkingtime[0][0] + offset)
         else:
-            return tomorrow + timedelta(seconds=checkingtime[0][0] + self.interval - (checkingtime[0][0] % self.interval))
+            return tomorrow + timedelta(seconds=checkingtime[0][0] + self.interval - (checkingtime[0][0] % self.interval) + offset)
 
     async def save_checkingstatus(self,healthstatus,res):
         if healthstatus[-1]:
