@@ -212,7 +212,7 @@ class HealthCheckServer(socket.SocketServer):
             except ConnectionRefusedError as ex:
                 #The healthcheck server is not running
                 pass
-            except TimeoutError as ex:
+            except asyncio.TimeoutError as ex:
                 #The healthcheck server is not running
                 pass
             except OSError as ex:

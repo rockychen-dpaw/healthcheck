@@ -36,8 +36,8 @@ class Event(object):
         self.locks[i].set()
 
 class BaseHealthStatusListenerClient(socket.SocketClient):
-    def __init__(self):
-        super().__init__()
+    def __init__(self,timeout):
+        super().__init__(timeout = timeout)
         self._statuslist = CycleList(settings.HEALTHSTATUS_BUFFER)
         self._healthstatus_task = None
         self._wait = Event()
@@ -75,6 +75,8 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
         try:
             while not shutdown.shutdowning:
                 try:
+                    data = None
+                    status_code = None
                     status_code,data = await self.receive(-1)
                     if status_code == socket.HEALTHCONFIG_HAHSCODE:
                         if self.healthcheck.config_hashcode != data:
@@ -135,12 +137,18 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
 class HealthStatusListenerClient(BaseHealthStatusListenerClient):
     conn_type = socket.HEALTHSTATUS_SUBSCRIPTOR
 
+    def __init__(self):
+        super().__init__(settings.HEARTBEAT + 2)
+
     @property
     def healthcheck(self):
         return healthcheck
 
 class EditingHealthStatusListenerClient(BaseHealthStatusListenerClient):
     conn_type = socket.EDITING_HEALTHSTATUS_SUBSCRIPTOR
+
+    def __init__(self):
+        super().__init__(0)
 
     @property
     def healthcheck(self):
