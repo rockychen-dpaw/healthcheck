@@ -4,6 +4,7 @@ import shutil
 import traceback
 import inspect
 import asyncio
+import math
 import json
 import os
 import time
@@ -78,6 +79,10 @@ class BaseServiceHealthCheckTask(object):
                     endtime = utils.now()
     
                 healthstatus = HealthCheck.check_response(self.servicehealthcheck,res)
+            except httpx.TimeoutException as ex:
+                healthstatus = ["red","httpx.{} : {}".format(ex.__class__.__name__,str(ex)),None]
+                if not endtime:
+                    endtime = utils.now()
             except Exception as ex:
                 healthstatus = ["error","{} : {}".format(ex.__class__.__name__,str(ex)),None]
                 if not endtime:
@@ -543,8 +548,8 @@ class ServiceHealthCheck(UserDict):
         return self['id']
 
     @property
-    def critical(self):
-        return self['critical']
+    def criticalweight(self):
+        return self['criticalweight']
 
     @property
     def prtg(self):
@@ -669,33 +674,36 @@ class ServiceHealthCheck(UserDict):
             tomorrow = today + timedelta(days=1)
             seconds_in_day = int((now - today).total_seconds())
 
-        next_checktime_seconds_without_offset = seconds_in_day - (seconds_in_day % self.interval)
-        next_checktime_seconds = next_checktime_seconds_without_offset + offset
-        next_checktime = today + timedelta(seconds=next_checktime_seconds)
+        nextchecktimeseconds_without_offset = seconds_in_day - (seconds_in_day % self.interval)
+        nextchecktime = today + timedelta(seconds=nextchecktimeseconds_without_offset + offset)
 
-        if last_checkingtime and next_checktime <= last_checkingtime:
-            next_checktime += timedelta(seconds=self.interval)
-            next_checktime_seconds += self.interval
-            if next_checktime >= tomorrow:
-                next_checktime = tomorrow
-                next_checktime_seconds = 0
+        if last_checkingtime and nextchecktime <= last_checkingtime:
+            addedseconds = self.interval * math.ceil(((last_checkingtime - nextchecktime).total_seconds() + 1)/self.interval)
+            nextchecktimeseconds_without_offset += addedseconds
+            nextchecktime_without_offset = today + timedelta(seconds=nextchecktimeseconds_without_offset)
+
+            nextchecktime += timedelta(seconds=addedseconds)
+            if nextchecktime_without_offset >= tomorrow:
+                nextchecktime_without_offset = tomorrow
+                nextchecktimeseconds_without_offset = 0
+                nextchecktime = nextchecktime_without_offset + timedelta(seconds=offset)
 
 
         checkingtime = self["checkingtime"]
         if not checkingtime:
-            return next_checktime
+            return nextchecktime
 
         index = -1
         for i in range(len(checkingtime)):
             starttime = checkingtime[i][0]
             endtime = checkingtime[i][1]
-            if next_checktime_seconds >= starttime and next_checktime_seconds < endtime:
-                return next_checktime
-            elif next_checktime_seconds < starttime:
+            if nextchecktimeseconds_without_offset >= starttime and nextchecktimeseconds_without_offset < endtime:
+                return nextchecktime
+            elif nextchecktimeseconds_without_offset < starttime:
                 if starttime % self.interval == 0:
-                    return next_checktime + timedelta(seconds=starttime - next_checktime_seconds_without_offset)
+                    return today + timedelta(seconds=starttime + offset)
                 else:
-                    return next_checktime + timedelta(seconds=starttime + self.interval - (starttime % self.interval) - next_checktime_seconds_without_offset)
+                    return today + timedelta(seconds=starttime + self.interval - (starttime % self.interval) + offset)
 
         #can't find the next check time in the same day, try next day
         if starttime % self.interval == 0:
@@ -795,6 +803,7 @@ class PRTGMixin(object):
         failed_services = []
         warning_services = []
         now = utils.now()
+        servicecritical = {}
         for section in self.healthchecksections:
             for service in section.healthcheckservices:
                 if not service.url:
@@ -809,16 +818,13 @@ class PRTGMixin(object):
 
                 if service.prtg:
                     if isinstance(service.prtg,list):
-                        for prtgchannel in service.prtg:
+                        for channelid,prtgchannel,getdata_map in service.prtg:
                             if prtgdata == PRTG_DATA_NOT_AVAILABLE:
                                 #the prtg data for this prtg channel is not available.
                                 continue
-                            if prtgdata and prtgchannel["channel"] not in prtgdata:
-                                #the prtg data for this prtg channel is not available.
-                                continue
                             prtgchannel = dict(prtgchannel)
-                            if prtgdata is not None and prtgdata[prtgchannel["channel"]] is not None:
-                                prtgchannel["value"] = prtgdata[prtgchannel["channel"]]
+                            if prtgdata is not None and prtgdata.get(channelid) is not None:
+                                prtgchannel["value"] = prtgdata[channelid]
 
                             data["result"].append(prtgchannel)
                     else:
@@ -830,12 +836,14 @@ class PRTGMixin(object):
                             data["result"].append(prtgchannel)
 
                 if healthstatus_name in ("red","error"):
-                    if service.critical:
-                        data["error"] = 1
+                    if service.criticalweight:
+                        servicecritical[service.criticalweight[0]] = servicecritical.get(service.criticalweight[0],0) + service.criticalweight[1]
                     failed_services.append(service.servicename)
                 elif healthstatus_name  == "yellow":
                     warning_services.append(service.name)
 
+        if any( (v >= 1) for v in servicecritical.values()):
+            data["error"] = 1
 
         if failed_services or warning_services:
             if failed_services and warning_services:
@@ -1110,6 +1118,43 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 errors.append("Section {}({}): No service are configured".format(sectionindex,sectionid))
                 continue
 
+            baseprtgconfig = config.get("prtg")
+
+            if baseprtgconfig:
+                if isinstance(baseprtgconfig,list):
+                    if len(baseprtgconfig) == 0:
+                        baseprtgconfig = None
+                    elif len(service["prtg"]) == 1:
+                        baseprtgconfig = baseprtgconfig[0]
+    
+                if isinstance(baseprtgconfig,list):
+                    for i in range(len(baseprtgconfig) - 1,-1,-1):
+                        prtgconfig = baseprtgconfig[i]
+                        prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
+                        if  prtgconfig["unit"].lower() == "custom":
+                            prtgconfig["customunit"] = prtgconfig.get("customunit") or "status"
+                        elif "customunit" in prtgconfig:
+                            del  prtgconfig["customunit"]
+
+                        prtgconfig["value"] = prtgconfig.get("value") or 0
+                        if "id" in prtgconfig:
+                            channelid = prtgconfig.get("id")
+                        else:
+                            #no channelid
+                            del baseprtgconfig[i]
+                            continue
+
+                        baseprtgconfig[i] = prtgconfig
+                else:
+                    baseprtgconfig["unit"] = baseprtgconfig.get("unit") or "Custom"
+                    if  baseprtgconfig["unit"].lower() == "custom":
+                        baseprtgconfig["customunit"] = baseprtgconfig.get("customunit") or "status"
+                    elif "customunit" in baseprtgconfig:
+                        del  baseprtgconfig["customunit"]
+
+                    baseprtgconfig["customunit"] = baseprtgconfig.get("customunit") or "status"
+                    baseprtgconfig["value"] = baseprtgconfig.get("value") or 0
+
             services = OrderedDict()
             serviceindex = 0
             for service in config["services"]:
@@ -1144,7 +1189,21 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                     method = basemethod
                 service["method"] = method
 
-                service["critical"] = service.get("critical",False)
+                try:
+                    if "criticalweight" in service:
+                        criticalweight = service["criticalweight"] 
+                        if ":" in criticalweight:
+                            criticalweight = [d.strip() for d in criticalweight.split(":",1)]
+                            if not criticalweight[0]:
+                                criticalweight[0] = "__default__"
+                            criticalweight[1] = float(criticalweight[1])
+                    else:
+                        criticalweight = None
+                except:
+                    errors.append("Service {0}({1}).{2}: criticalweight({3}) is incorrect.".format(sectionindex,sectionid,serviceindex,criticalweight))
+                    criticalweight = None
+                service["criticalweight"] = criticalweight
+
 
                 queryparameters = service.get("queryparameters")
                 if not queryparameters:
@@ -1247,11 +1306,49 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 service["timeout"] = timeout
                 service["request_timeout"] = timeout / 1000.0
 
-                service["prtg"] = service.get("prtg") or {
-                    "customunit":"status",
-                    "unit":"Custom",
-                    "value": 0
-                }
+                #sync the config from  prtg config in section to service config
+                if service.get("prtg"):
+                    if baseprtgconfig:
+                        if isinstance(service["prtg"],list):
+                            for prtgconfig in service["prtg"]:
+                                channelid = prtgconfig.get("id")
+                                if not channelid:
+                                    continue
+                                baseconfig = next(( c for c in baseprtgconfig if c["id"] == channelid),None)
+                                if not baseconfig:
+                                    continue
+                                #add the base config to service prtg config if it doesn't exist
+                                for k,v in baseconfig.items():
+                                    if k not in prtgconfig:
+                                        prtgconfig[k] = v
+                        else:
+                            baseconfig = None
+                            if isinstance(baseprtgconfig,list):
+                                channelid = service["prtg"].get("id")
+                                if channelid:
+                                    baseconfig = next(( c for c in baseprtgconfig if c["id"] == channelid),None)
+                            else:
+                                baseconfig = baseprtgconfig
+
+                            if baseconfig:
+                                #add the base config to service prtg config if it doesn't exist
+                                for k,v in baseconfig.items():
+                                    if k not in service["prtg"]:
+                                        service["prtg"][k] = v
+                elif baseprtgconfig:
+                    if isinstance(baseprtgconfig,list):
+                        service["prtg"] = []
+                        for prtgconfig in baseprtgconfig:
+                            service["prtg"].append(dict(prtgconfig))
+                    else:
+                        service["prtg"] = dict(baseprtgconfig)
+                else:
+                    service["prtg"] = {
+                        "customunit":"status",
+                        "unit":"Custom",
+                        "value": 0
+                    }
+
                 if isinstance(service["prtg"],list):
                     if len(service["prtg"]) == 0:
                         service["prtg"] = {
@@ -1263,16 +1360,49 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         service["prtg"] = service.get("prtg")[0]
 
                 if isinstance(service["prtg"],list):
-                    for prtgconfig in service["prtg"]:
+                    for i in range(len(service["prtg"])):
+                        prtgconfig = service["prtg"][i]
                         prtgconfig["channel"] = prtgconfig.get("channel") or service["name"]
                         prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
-                        prtgconfig["customunit"] = prtgconfig.get("customunit") or "status"
+
+                        if  prtgconfig["unit"].lower() == "custom":
+                            prtgconfig["customunit"] = prtgconfig.get("customunit") or "status"
+                        elif "customunit" in prtgconfig:
+                            del  prtgconfig["customunit"]
+
                         prtgconfig["value"] = prtgconfig.get("value") or 0
+                        if "id" in prtgconfig:
+                            channelid = prtgconfig.pop("id")
+                        else:
+                            channelid = prtgconfig["channel"]
+                        getdata_map = {}
+                        for status in ("green","yellow","red","error"):
+                            key = "data4{}".format(status)
+                            if key in prtgconfig:
+                                getdata_map[status] = prtgconfig.pop(key)
+
+                        service["prtg"][i] = (channelid,prtgconfig,getdata_map)
                 else:
                     service["prtg"]["channel"] = service["prtg"].get("channel") or service["name"]
                     service["prtg"]["unit"] = service["prtg"].get("unit") or "Custom"
-                    service["prtg"]["customunit"] = service["prtg"].get("customunit") or "status"
+                    if  service["prtg"]["unit"].lower() == "custom":
+                        service["prtg"]["customunit"] = service["prtg"].get("customunit") or "status"
+                    elif "customunit" in service["prtg"]:
+                        del service["prtg"]["customunit"]
+
                     service["prtg"]["value"] = service["prtg"].get("value") or 0
+                    if "id" in service["prtg"]:
+                        channelid = service["prtg"].pop("id")
+                    else:
+                        channelid = service["prtg"]["channel"]
+
+                    getdata_map = {}
+                    for status in ("green","yellow","red","error"):
+                        key = "data4{}".format(status)
+                        if key in service["prtg"]:
+                            getdata_map[status] = service["prtg"].pop(key)
+
+                    service["prtg"] = (channelid,service["prtg"],getdata_map)
 
                 if not service["healthchecks"]:
                     errors.append("Service {0}({1}).{2}({3}): Missing healthcheck configuration".format(sectionindex,sectionid,serviceindex,serviceid))
@@ -1284,43 +1414,69 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             errors.append("Service {0}({1}).{2}({3}): The health status({4}) in healthchecks is not in ('green','yellow','red','error')".format(sectionindex,sectionid,serviceindex,serviceid,key))
                             del config["services"][serviceid]["healthchecks"][key]
                             continue
+
                         if isinstance(service["prtg"],list):
+                            prtgdata_map = {}
+                            if isinstance(service["healthchecks"][key],(list,tuple)):
+                                prtgdata_config = {}
+                            else:
+                                prtgdata_config = service["healthchecks"][key].get('prtg',{})
+                                if not isinstance(prtgdata_config,dict):
+                                    errors.append("Service {0}({1}).{2}({3}).{4}: The prtg config({5}) should be dict type".format(sectionindex,sectionid,serviceindex,serviceid,key,prtgdata_config))
+                                    prtgdata_config = {}
+
+                            for prtgconfig in service["prtg"]:
+                                if prtgconfig[0] in prtgdata_config:
+                                    prtgdata_map[prtgconfig[0]] = checks.get_prtg_factory(prtgdata_config[prtgconfig[0]]) 
+                                elif key in prtgconfig[2]:
+                                    prtgdata_map[prtgconfig[0]] = checks.get_prtg_factory(prtgconfig[2][key]) 
+
                             if isinstance(service["healthchecks"][key],(list,tuple)):
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key]),
                                     checks.get_message_factory(None),
-                                    checks.get_prtg_factory(None)
+                                    prtgdata_map
                                 ]
                             else:
-                                prtg_data_map = {}
-                                prtg_data_config = service["healthchecks"][key].get('prtg')
-                                if not prtg_data_config :
-                                    for prtg_config in service["prtg"]:
-                                        prtg_data_map[prtg_config["channel"]] = checks.get_prtg_factory(None) 
-                                elif isinstance(prtg_data_config,dict):
-                                    for prtg_config in service["prtg"]:
-                                        prtg_data_map[prtg_config["channel"]] = checks.get_prtg_factory(prtg_data_config[prtg_config["channel"]]) if prtg_data_config.get(prtg_config["channel"]) else None
-                                else:
-                                    for prtg_config in service["prtg"]:
-                                        prtg_data_map[prtg_config["channel"]] = checks.get_prtg_factory(prtg_data_config) 
-
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key].get("condition")),
                                     checks.get_message_factory(service["healthchecks"][key].get('message')),
-                                    prtg_data_map
+                                    prtgdata_map
                                 ]
                         elif service["prtg"]:
                             if isinstance(service["healthchecks"][key],(list,tuple)):
+                                prtgdata_config = None
+                            else:
+                                prtgdata_config = service["healthchecks"][key].get('prtg')
+
+                            prtgconfig = service["prtg"]
+                            prtgdata = None
+                            if prtgdata_config:
+                                #Have get prtg data config
+                                if isinstance(prtgdata_config,dict):
+                                    #get prtg data config is dict
+                                    if prtgconfig[0] in prtgdata_config:
+                                        #Found the prtg data config for the channel
+                                        prtgdata = checks.get_prtg_factory(prtgdata_config[prtgconfig[0]]) 
+                                    elif key in prtgconfig[2]:
+                                        #Found the default prtg data config for the status
+                                        prtgdata = checks.get_prtg_factory(prtgconfig[2][key]) 
+                                else:
+                                    prtgdata = checks.get_prtg_factory(prtgdata_config) 
+                            elif key in prtgconfig[2]:
+                                prtgdata = checks.get_prtg_factory(prtgconfig[2][key]) 
+
+                            if isinstance(service["healthchecks"][key],(list,tuple)):
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key]),
                                     checks.get_message_factory(None),
-                                    checks.get_prtg_factory(None)
+                                    prtgdata
                                 ]
                             else:
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key].get("condition")),
                                     checks.get_message_factory(service["healthchecks"][key].get('message')),
-                                    checks.get_prtg_factory(service["healthchecks"][key].get('prtg'))
+                                    prtgdata
                                 ]
                         else:
                             if isinstance(service["healthchecks"][key],(list,tuple)):
@@ -1440,7 +1596,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             for service in section["services"].values():
                 if now >= service["healthstatus"][0]:
                     #check this service now
-                    logger.debug("{} : Run a task to check the service({}.{})  to task runner.".format(self,service.sectionid,service.serviceid))
+                    logger.debug("{} : Run a task to check the service({}.{}.lastchecktime = {}, next checktime={})  to task runner.".format(self,service.sectionid,service.serviceid,service["healthstatus"][0],service.get_nextchecktime(service["offset"],service["healthstatus"][0],now,today,tomorrow,seconds_in_day)))
                     task = taskcls(service,*args)
                     asyncio.create_task(task.run())
                     next_checktime = service.get_nextchecktime(service["offset"],service["healthstatus"][0],now,today,tomorrow,seconds_in_day)
@@ -1501,12 +1657,13 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         if isinstance(serviceconfig["prtg"],list):
                             prtgdata = {}
                             for prtgchannel in serviceconfig["prtg"]:
-                                if get_prtgdata.get(prtgchannel["channel"]):
-                                    prtgdata[prtgchannel["channel"]] = get_prtgdata[prtgchannel["channel"]](res)
+                                if get_prtgdata.get(prtgchannel[0]):
+                                    prtgdata[prtgchannel[0]] = get_prtgdata[prtgchannel[0]](res)
                         elif get_prtgdata:
                             prtgdata = get_prtgdata(res)
                         else:
-                            prtgdata = PRTG_DATA_NOT_AVAILABLE
+                            #don't have the config to get the prtg data, use the default prtg data
+                            prtgdata = None
                     else:
                         prtgdata = PRTG_DATA_NOT_AVAILABLE
 

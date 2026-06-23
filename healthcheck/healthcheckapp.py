@@ -181,8 +181,8 @@ def dump_servicehealthstatus(sectionid,serviceid,healthstatus):
         sectionid,
         serviceid,
         healthstatus[0].strftime("\"%Y-%m-%dT%H:%M:%S.%f\"") if healthstatus[0] else "null",
-        healthstatus[1][0].strftime("\"%Y-%m-%dT%H:%M:%S.%f\"") if healthstatus[1][0] else "null",
-        healthstatus[1][1].strftime("\"%Y-%m-%dT%H:%M:%S.%f\"") if healthstatus[1][1] else "null",
+        healthstatus[1][0].strftime("\"%Y-%m-%dT%H:%M:%S.%f\"") if healthstatus[1] and healthstatus[1][0] else "null",
+        healthstatus[1][1].strftime("\"%Y-%m-%dT%H:%M:%S.%f\"") if healthstatus[1] and healthstatus[1][1] else "null",
         healthstatus[1][2] or "",
         json.dumps(healthstatus[1][3] or ""),
         "true" if healthstatus[1][-1] else "false"
