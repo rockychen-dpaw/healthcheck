@@ -818,7 +818,7 @@ class PRTGMixin(object):
 
                 if service.prtg:
                     if isinstance(service.prtg,list):
-                        for channelid,prtgchannel,getdata_map in service.prtg:
+                        for channelid,prtgchannel,getdata_map,computed_columns in service.prtg:
                             if prtgdata == PRTG_DATA_NOT_AVAILABLE:
                                 #the prtg data for this prtg channel is not available.
                                 continue
@@ -826,12 +826,19 @@ class PRTGMixin(object):
                             if prtgdata is not None and prtgdata.get(channelid) is not None:
                                 prtgchannel["value"] = prtgdata[channelid]
 
+                            for k,v in computed_columns.items():
+                                prtgchannel[k] = v(prtgchannel["value"])
+
+
                             data["result"].append(prtgchannel)
                     else:
                         if prtgdata != PRTG_DATA_NOT_AVAILABLE:
-                            prtgchannel = dict(service.prtg)
+                            prtgchannel = dict(service.prtg[1])
                             if prtgdata is not None:
                                 prtgchannel["value"] = prtgdata
+
+                            for k,v in service.prtg[3].items():
+                                prtgchannel[k] = v(prtgchannel["value"])
 
                             data["result"].append(prtgchannel)
 
@@ -1128,6 +1135,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         baseprtgconfig = baseprtgconfig[0]
     
                 if isinstance(baseprtgconfig,list):
+                    failed = False
                     for i in range(len(baseprtgconfig) - 1,-1,-1):
                         prtgconfig = baseprtgconfig[i]
                         prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
@@ -1144,7 +1152,28 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             del baseprtgconfig[i]
                             continue
 
+                        for k in prtgconfig.keys():
+                            v = prtgconfig[k]
+                            if not v:
+                                continue
+                            if not isinstance(v,str):
+                                continue
+                            v = v.strip()
+                            if v.startswith("lambda"):
+                                try:
+                                    prtgconfig[k] = eval(v)
+                                except:
+                                    errors.append("Section {0}({1}): the lambda expression({3}) of the prtg data key({2}) is invalid.".format(sectionindex,sectionid,k,v))
+                                    failed = True
+                                    break
+                        if failed:
+                            break
+
                         baseprtgconfig[i] = prtgconfig
+
+                    if failed:
+                        continue
+
                 else:
                     baseprtgconfig["unit"] = baseprtgconfig.get("unit") or "Custom"
                     if  baseprtgconfig["unit"].lower() == "custom":
@@ -1154,6 +1183,24 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
                     baseprtgconfig["customunit"] = baseprtgconfig.get("customunit") or "status"
                     baseprtgconfig["value"] = baseprtgconfig.get("value") or 0
+
+                    failed = False
+                    for k in baseprtgconfig.keys():
+                        v = baseprtgconfig[k]
+                        if not v:
+                            continue
+                        if not isinstance(v,str):
+                            continue
+                        v = v.strip()
+                        if v.startswith("lambda"):
+                            try:
+                                baseprtgconfig[k] = eval(v)
+                            except:
+                                errors.append("Section {0}({1}): the lambda expression({3}) of the prtg data key({2}) is invalid.".format(sectionindex,sectionid,k,v))
+                                failed = True
+                                break
+                    if failed:
+                        continue
 
             services = OrderedDict()
             serviceindex = 0
@@ -1310,7 +1357,25 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if service.get("prtg"):
                     if baseprtgconfig:
                         if isinstance(service["prtg"],list):
+                            failed = False
                             for prtgconfig in service["prtg"]:
+                                for k in prtgconfig.keys():
+                                    v = prtgconfig[k]
+                                    if not v:
+                                        continue
+                                    if not isinstance(v,str):
+                                        continue
+                                    v = v.strip()
+                                    if v.startswith("lambda"):
+                                        try:
+                                            prtgconfig[k] = eval(v)
+                                        except:
+                                            errors.append("Service {0}({1}).{2}({3}): the lambda expression({5}) of the prtg data key({4}) is invalid.".format(sectionindex,sectionid,serviceindex,serviceid,k,v))
+                                            failed = True
+                                            break
+                                if failed:
+                                    break
+
                                 channelid = prtgconfig.get("id")
                                 if not channelid:
                                     continue
@@ -1321,7 +1386,27 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                                 for k,v in baseconfig.items():
                                     if k not in prtgconfig:
                                         prtgconfig[k] = v
+                            if failed:
+                                continue
                         else:
+                            failed = False
+                            for k in service["prtg"].keys():
+                                v = service["prtg"][k]
+                                if not v:
+                                    continue
+                                if not isinstance(v,str):
+                                    continue
+                                v = v.strip()
+                                if v.startswith("lambda"):
+                                    try:
+                                        service["prtg"][k] = eval(v)
+                                    except:
+                                        errors.append("Service {0}({1}).{2}({3}): the lambda expression({5}) of the prtg data key({4}) is invalid.".format(sectionindex,sectionid,serviceindex,serviceid,k,v))
+                                        failed = True
+                                        break
+                            if failed:
+                                continue
+
                             baseconfig = None
                             if isinstance(baseprtgconfig,list):
                                 channelid = service["prtg"].get("id")
@@ -1375,13 +1460,22 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             channelid = prtgconfig.pop("id")
                         else:
                             channelid = prtgconfig["channel"]
+
                         getdata_map = {}
                         for status in ("green","yellow","red","error"):
                             key = "data4{}".format(status)
                             if key in prtgconfig:
                                 getdata_map[status] = prtgconfig.pop(key)
 
-                        service["prtg"][i] = (channelid,prtgconfig,getdata_map)
+                        computed_columns = {}
+                        for k,v in prtgconfig.items():
+                            if callable(v):
+                                computed_columns[k] = v
+
+                        for k in computed_columns.keys():
+                            del prtgconfig[k]
+
+                        service["prtg"][i] = (channelid,prtgconfig,getdata_map,computed_columns)
                 else:
                     service["prtg"]["channel"] = service["prtg"].get("channel") or service["name"]
                     service["prtg"]["unit"] = service["prtg"].get("unit") or "Custom"
@@ -1402,7 +1496,15 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         if key in service["prtg"]:
                             getdata_map[status] = service["prtg"].pop(key)
 
-                    service["prtg"] = (channelid,service["prtg"],getdata_map)
+                    computed_columns = {}
+                    for k,v in service["prtg"].items():
+                        if callable(v):
+                            computed_columns[k] = v
+
+                    for k in computed_columns.keys():
+                        del service["prtg"][k]
+
+                    service["prtg"] = (channelid,service["prtg"],getdata_map,computed_columns)
 
                 if not service["healthchecks"]:
                     errors.append("Service {0}({1}).{2}({3}): Missing healthcheck configuration".format(sectionindex,sectionid,serviceindex,serviceid))
