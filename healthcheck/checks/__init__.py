@@ -638,6 +638,11 @@ def _get_value_factory(config):
                 data = f_get_value(res,params)
             else:
                 data = f_get_value(res)
+
+            if data == datanotfound:
+                #data not found, return None
+                return None
+
             return _f(data) if _f else data
         except Exception as ex:
             return "N/A"
