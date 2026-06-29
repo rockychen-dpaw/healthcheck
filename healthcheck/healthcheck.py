@@ -847,7 +847,7 @@ class PRTGMixin(object):
                         servicecritical[service.criticalweight[0]] = servicecritical.get(service.criticalweight[0],0) + service.criticalweight[1]
                     failed_services.append(service.servicename)
                 elif healthstatus_name  == "yellow":
-                    warning_services.append(service.name)
+                    warning_services.append(service.servicename)
 
         if any( (v >= 1) for v in servicecritical.values()):
             data["error"] = 1
@@ -1244,6 +1244,9 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             if not criticalweight[0]:
                                 criticalweight[0] = "__default__"
                             criticalweight[1] = float(criticalweight[1])
+                        else:
+                            criticalweight = ["__default__",float(criticalweight)]
+
                     else:
                         criticalweight = None
                 except:
