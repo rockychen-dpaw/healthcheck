@@ -681,3 +681,27 @@ def get_message_factory(config):
         #message pattern
         return _format_message_factory(config)
 
+def get_prtg_factory(config):
+    if not config:
+        def _func(res):
+            if res.status_code >=200 and res.status_code < 300:
+                return 1
+            else:
+                return 0
+        return _func
+
+    if isinstance(config,str):
+        if config.startswith("lambda"):
+            return eval(config)
+        else:
+            config = [config]
+    elif not isinstance(config,(tuple,list)):
+        raise Exception("Healthcheck message parameters should be string or list type")
+
+    if config[0] in modules:
+        #single message,
+        return _get_value_factory(config)
+    else:
+        #message pattern
+        return _format_message_factory(config)
+

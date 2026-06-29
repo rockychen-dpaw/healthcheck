@@ -19,8 +19,9 @@ try:
 except:
     HEARTBEAT = 10
 
+HEALTHCHECKSERVICE_TIMEOUT = int(os.environ.get("HEALTHCHECKSERVICE_TIMEOUT",5000)) #milliseconds
 
-NEXTCHECK_TIMEOUT = int(os.environ.get("NEXTCHECK_TIMEOUT",30)) * 1000 #configured in seconds, tranform it to milliseconds
+NEXTCHECK_TIMEOUT_DELAY = int(os.environ.get("NEXTCHECK_TIMEOUT_DELAY",1)) #configured in milliseconds
 NEXTCHECK_CHECKINTERVAL = int(os.environ.get("NEXTCHECK_CHECKINTERVAL",10)) * 1000 #configured in seconds, tranform it to milliseconds
 
 BLOCK_TIMEOUT = int(os.environ.get("BLOCK_TIMEOUT",5)) # in seconds, 
