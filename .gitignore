@@ -5,3 +5,5 @@ venv
 .swp
 .python-version
 data_dir/
+.vscode
+.ruff_cache
