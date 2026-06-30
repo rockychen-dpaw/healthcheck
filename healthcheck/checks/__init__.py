@@ -610,7 +610,7 @@ get_message_help = """Only support the following retrieving message configuratio
 4. [data category, keys]
 5. [data category, keys, lambda expression]
 6. [pattern,[],...]"""
-def _get_value_factory(config):
+def _get_value_factory(config,datanotfound_value="N/A"):
     f_get_value = getattr(modules[config[0]],"get_value")
     _f = None
     if len(config) < 2:
@@ -638,17 +638,22 @@ def _get_value_factory(config):
                 data = f_get_value(res,params)
             else:
                 data = f_get_value(res)
+
+            if data == datanotfound:
+                #data not found, return None
+                return datanotfound_value
+
             return _f(data) if _f else data
         except Exception as ex:
-            return "N/A"
+            return datanotfound_value
         
     return _func
 
-def _format_message_factory(config):
+def _format_message_factory(config,datanotfound_value="N/A"):
     pattern = config[0]
     f_params = []
     for c in config[1:]:
-        f_params.append(get_message_factory(c))
+        f_params.append(get_message_factory(c,datanotfound_value=datanotfound_value))
 
     def _func1(res):
         return pattern.format(*[f_param(res) for f_param in f_params ])
@@ -657,7 +662,7 @@ def _format_message_factory(config):
         return pattern
     return _func1 if f_params else _func2
 
-def get_message_factory(config):
+def get_message_factory(config,datanotfound_value="N/A"):
     if not config:
         def _func(res):
             if res.status_code >=200 and res.status_code < 300:
@@ -676,10 +681,10 @@ def get_message_factory(config):
 
     if config[0] in modules:
         #single message,
-        return _get_value_factory(config)
+        return _get_value_factory(config,datanotfound_value=datanotfound_value)
     else:
         #message pattern
-        return _format_message_factory(config)
+        return _format_message_factory(config,datanotfound_value=datanotfound_value)
 
 def get_prtg_factory(config):
     if not config:
@@ -700,8 +705,8 @@ def get_prtg_factory(config):
 
     if config[0] in modules:
         #single message,
-        return _get_value_factory(config)
+        return _get_value_factory(config,datanotfound_value=None)
     else:
         #message pattern
-        return _format_message_factory(config)
+        return _format_message_factory(config,datanotfound_value=None)
 

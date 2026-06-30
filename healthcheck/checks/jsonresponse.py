@@ -31,8 +31,8 @@ def get_value(res,key=None):
                     data = data[k[1]]
                 else:
                     return datanotfound
-            elif hasattr(data,k):
-                data = getattr(data,k)
+            elif hasattr(data,k[1]):
+                data = getattr(data,k[1])
             else:
                 return datanotfound
         elif isinstance(data,(list,tuple,str)):
