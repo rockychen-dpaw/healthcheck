@@ -11,7 +11,7 @@ import httpx
 from status import app,application
 from . import settings
 from .healthcheckclient import healthstatuslistener,editinghealthstatuslistener
-from .healthcheck import healthcheck,LastHealthCheck,SystemViewMeta
+from .healthcheck import healthcheck,LastHealthCheck,SystemViewMeta,PRTGSensorMeta
 from .socket import commandclient
 from . import shutdown
 from . import serializers
@@ -101,38 +101,51 @@ async def healthcheckindex():
 
     adminable = await can_admin(request)
 
-    return await render_template("healthcheck/index.html",systemviews=healthcheck.systemviews,can_admin=adminable,defaultview=defaultview)
+    return await render_template("healthcheck/index.html",systemviews=healthcheck.systemviews,can_admin=adminable,defaultview=defaultview,prtgsensors=healthcheck.prtgsensors)
 
 
-@app.route("/healthcheck/config/systemview",methods=["GET","POST"],defaults={'system':None})
-@app.route("/healthcheck/config/systemview/<system>",methods=["GET","POST"])
-async def save_systemview(system):
+@app.route("/healthcheck/systemview",methods=["GET","POST"],defaults={'systemid':None})
+@app.route("/healthcheck/systemview/<systemid>",methods=["GET","POST"])
+async def save_systemview(systemid):
     #permission check
     editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
 
     if request.method == "GET":
-        if system:
-            viewmeta = healthcheck.get_viewmeta(system)
+        if systemid:
+            editing = True
+            viewmeta = healthcheck.get_viewmeta(systemid)
         else:
+            editing = False
             viewmeta = SystemViewMeta(["","","",""])
-        return await render_template("healthcheck/systemview.html",viewmeta=viewmeta,system=system)
+        return await render_template("healthcheck/systemview.html",viewmeta=viewmeta,editing = editing)
     elif request.method == "POST":
         formdata = await request.form
         action = formdata.get("action","save")
         if action == "save":
-            systemid = system or formdata.get("id")
+            messages = []
+            if systemid:
+                editing = True
+            else:
+                editing = False
+                systemid = formdata.get("id")
+                if healthcheck.get_viewmeta(systemid):
+                    messages.append("System view({}) already exists".format(systemid))
+
             title = formdata.get("title")
             description = formdata.get("description")
-            messages = []
             if not systemid :
                 messages.append("System Identity can't be empty")
+            elif " " in systemid :
+                messages.append("System Identity can't contain space")
+            elif "@" in systemid:
+                messages.append("System Identity can't contain '@'")
             if not title:
                 messages.append("Title can't be empty.")
             if messages:
                 viewmeta = SystemViewMeta([systemid,title,description])
-                return await render_template("healthcheck/systemview.html",viewmeta=viewmeta,messages=messages,system=system)
+                return await render_template("healthcheck/systemview.html",viewmeta=viewmeta,messages=messages,editing=editing)
             healthcheck.save_systemview(systemid,title,description)
 
             return redirect('/healthcheck')
@@ -141,9 +154,64 @@ async def save_systemview(system):
         else:
             raise Exception("Action({}) Not Support".format(action))
 
-@app.route("/healthcheck/config/systemview/<system>/delete",methods=["GET"])
-async def delete_systemview(system):
-    healthcheck.delete_systemview(system)
+
+@app.route("/healthcheck/prtgsensor",methods=["GET","POST"],defaults={'sensorid':None})
+@app.route("/healthcheck/prtgsensor/<sensorid>",methods=["GET","POST"])
+async def save_prtgsensor(sensorid):
+    #permission check
+    editable = await can_admin(request)
+    if not editable:
+        return "Not Authorized", 403
+
+    if request.method == "GET":
+        if sensorid:
+            editing = True
+            sensormeta = healthcheck.get_prtgsensormeta(sensorid)
+        else:
+            editing = False
+            sensormeta = PRTGSensorMeta(["","","",""])
+        return await render_template("healthcheck/prtgsensor.html",sensormeta=sensormeta,editing=editing)
+    elif request.method == "POST":
+        formdata = await request.form
+        action = formdata.get("action","save")
+        if action == "save":
+            messages = []
+            if sensorid:
+                editing = True
+            else:
+                editing = False
+                sensorid = formdata.get("id")
+                if healthcheck.get_prtgsensormeta(sensorid):
+                    messages.append("PRTG Sensor({}) already exists".format(sensorid))
+
+            title = formdata.get("title")
+            description = formdata.get("description")
+            if not sensorid :
+                messages.append("PRTG Sensor Identity can't be empty")
+            elif " " in sensorid :
+                messages.append("PRTG Sensor Identity can't contain space")
+            if not title:
+                messages.append("Title can't be empty.")
+            if messages:
+                sensormeta = PRTGSensorMeta([sensorid,title,description])
+                return await render_template("healthcheck/prtgsensor.html",sensormeta=sensormeta,messages=messages,editing=editing)
+            healthcheck.save_prtgsensor(sensorid,title,description)
+
+            return redirect('/healthcheck')
+        elif action == "cancel":
+            return redirect("/healthcheck")
+        else:
+            raise Exception("Action({}) Not Support".format(action))
+
+
+@app.route("/healthcheck/systemview/<systemid>/delete",methods=["GET"])
+async def delete_systemview(systemid):
+    healthcheck.delete_systemview(systemid)
+    return redirect('/healthcheck')
+
+@app.route("/healthcheck/prtgsensor/<sensorid>/delete",methods=["GET"])
+async def delete_prtgsensor(sensorid):
+    healthcheck.delete_prtgsensor(sensorid)
     return redirect('/healthcheck')
 
 @app.route("/healthcheck/dashboard",defaults={'system': None})
@@ -282,6 +350,51 @@ async def customize_dashboard(system):
         else:
             return redirect("/healthcheck/dashboard")
 
+
+@app.route("/healthcheck/config/prtgsensor/<sensorid>",methods=["GET","POST"])
+async def customize_prtgsensor(sensorid):
+    #permission check
+    editable = await can_admin(request)
+    if not editable:
+        return "Not Authorized", 403
+
+
+    if request.method == "GET":
+        healthcheckview = healthcheck.get_prtgsensor(sensorid)
+
+        return await render_template("healthcheck/config_prtgsensor.html",healthcheck=healthcheckview,sensorid=sensorid)
+    else:
+        try:
+            formdata = await request.form
+            action = formdata.get("action","save")
+            if action == "save":
+                viewsettings = {}
+
+                for section in healthcheck.healthchecksections:
+                    if not section.prtgenabled:
+                        continue
+                    for service in section.healthcheckservices:
+                        if not service.prtgenabled:
+                            continue
+                        for channelid,prtgconfig in service.prtgchannels:
+                            if "{}:{}:{}".format(section.sectionid,service.serviceid,channelid) in formdata:
+                                if section.sectionid not in viewsettings:
+                                    viewsettings[section.sectionid] = {}
+                                if service.serviceid not in viewsettings[section.sectionid]:
+                                    viewsettings[section.sectionid][service.serviceid] = []
+                                viewsettings[section.sectionid][service.serviceid].append(channelid)
+
+                healthcheck.save_prtgsensorsettings(sensorid,viewsettings)
+            elif action == "reset":
+                healthcheck.save_prtgsensorsettings(sensorid)
+            else:
+                raise Exception("Action({}) Not Support".format(action))
+
+            msg = None
+        except Exception as ex:
+            traceback.print_exc()
+            msg = str(ex)
+        return redirect("/healthcheck")
 
 @app.route("/healthcheck/history/<sectionid>/<serviceid>",defaults={'pageid': ""})
 @app.route("/healthcheck/history/<sectionid>/<serviceid>/<pageid>")
@@ -574,13 +687,17 @@ def jsonstatus(system):
     details = request.args.get("details") or ""
     return healthcheck.get_view(viewkey).get_jsonstatus(details.lower() == "true"),200,{"Content-Type":"application/json"}
 
-@app.route("/healthcheck/prtg",defaults={'system': None})
-@app.route("/healthcheck/prtg/<system>")
-def prtg(system):
-    viewkey = system or request.headers.get("X-email")
-    details = request.args.get("details") or ""
-    return healthcheck.get_view(viewkey).get_prtgdata(details.lower() == "true"),200,{"Content-Type":"application/json"}
-
+@app.route("/healthcheck/prtg/<sensorid>")
+def prtg(sensorid):
+    #frist to try prtg sensor
+    try:
+        return healthcheck.get_prtgsensor(sensorid).get_prtgdata(),200,{"Content-Type":"application/json"}
+    except:
+        #second to try health checkview
+        if healthcheck.get_viewmeta(sensorid):
+            healthcheckview = healthcheck.get_view(sensorid)
+            return healthcheckview.get_prtgdata(),200,{"Content-Type":"application/json"}
+    return "PRTG Sensor({}) Not Found".format(sensorid),404
 
 @app.route("/healthcheck/config/healthstatusstream")
 async def editinghealthstatusstream():

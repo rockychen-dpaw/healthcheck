@@ -88,6 +88,20 @@ body {
     height:32px;
 }
 
+.innertable {
+    width:100%
+}
+.innertable tbody tr:nth-child(odd) {
+    background-color: #f2f2f2;
+}
+.innertable tbody tr:nth-child(even) {
+     background-color: #ffffff;
+}
+.innertable img{
+    width:32px;
+    height:32px;
+}
+
 .customizeblock {
     width: 90%
 }
@@ -131,6 +145,23 @@ body {
     text-align: center;
     height:60px;
     vertical-align: -22px;
+}
+
+table.customizechannelselect {
+    width: 200px;
+    display: inline-block;
+    padding-left: 10px;
+    text-align: left;
+    height:60px;
+    vertical-align: -22px;
+}
+table.customizechannelselect th{
+    text-align:center;
+    vertical-align: top;
+}
+table.customizechannelselect td{
+    text-align:left;
+    vertical-align: center;
 }
 
 table.menubar  {

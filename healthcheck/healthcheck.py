@@ -1,4 +1,5 @@
 import sys
+import re
 import hashlib
 import shutil
 import traceback
@@ -28,7 +29,7 @@ from .locks import FileLock
 logger = logging.getLogger("healthcheck.healthcheck")
 
 #urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-PRTG_DATA_NOT_AVAILABLE = "__NULL__"
+PRTGDATA_NOT_ENABLED = "__DISABLED__"
 
 class BaseServiceHealthCheckTask(object):
     def __init__(self,servicehealthcheck):
@@ -121,6 +122,10 @@ class SectionHealthCheck(UserDict):
     @property
     def healthcheckservices(self):
         return self["services"].values()
+
+    @property
+    def prtgenabled(self):
+        return any(s.prtgenabled for s in self.healthcheckservices)
 
 class HealthCheckStatus(object):
     @staticmethod
@@ -556,6 +561,13 @@ class ServiceHealthCheck(UserDict):
         return self['prtg']
 
     @property
+    def prtgchannels(self):
+        """
+        A iterator of (channelid,[channelconfig,get_prtgdata,computed_columns])
+        """
+        return self['prtg'].items() if self['prtg'] else []
+
+    @property
     def offset(self):
         return self['offset']
 
@@ -666,6 +678,11 @@ class ServiceHealthCheck(UserDict):
     @property
     def healthdetailpersistent(self):
         return self["healthdetailpersistent"]
+
+
+    @property
+    def prtgenabled(self):
+        return True if self.prtg else False
 
     def get_nextchecktime(self,offset,last_checkingtime,now=None,today=None,tomorrow=None,seconds_in_day=None):
         if not now:
@@ -805,9 +822,14 @@ class PRTGMixin(object):
         now = utils.now()
         servicecritical = {}
         for section in self.healthchecksections:
+            if not section.prtgenabled:
+                continue
             for service in section.healthcheckservices:
                 if not service.url:
                     continue
+                if not service.prtgenabled:
+                    continue
+
                 if service["healthstatus"][0] + timedelta(milliseconds=service["timeout"]) < now:
                     #the current healthstatus is outdated
                     prtgdata = None
@@ -816,31 +838,21 @@ class PRTGMixin(object):
                     prtgdata = service.healthstatus_prtgdata
                     healthstatus_name = service.healthstatus_name
 
-                if service.prtg:
-                    if isinstance(service.prtg,list):
-                        for channelid,prtgchannel,getdata_map,computed_columns in service.prtg:
-                            if prtgdata == PRTG_DATA_NOT_AVAILABLE:
-                                #the prtg data for this prtg channel is not available.
-                                continue
-                            prtgchannel = dict(prtgchannel)
-                            if prtgdata is not None and prtgdata.get(channelid) is not None:
-                                prtgchannel["value"] = prtgdata[channelid]
+                if prtgdata == PRTGDATA_NOT_ENABLED:
+                    continue
 
-                            for k,v in computed_columns.items():
-                                prtgchannel[k] = v(prtgchannel["value"])
+                if service.prtg :
+                    for channelid,prtgconfig in service.prtgchannels:
+                        prtgchannel,getdata_map,computed_columns = prtgconfig
+                        prtgchannel = dict(prtgchannel)
+                        if prtgdata is not None and prtgdata.get(channelid) is not None:
+                            prtgchannel["value"] = prtgdata[channelid]
+
+                        for k,v in computed_columns.items():
+                            prtgchannel[k] = v(prtgchannel["value"])
 
 
-                            data["result"].append(prtgchannel)
-                    else:
-                        if prtgdata != PRTG_DATA_NOT_AVAILABLE:
-                            prtgchannel = dict(service.prtg[1])
-                            if prtgdata is not None:
-                                prtgchannel["value"] = prtgdata
-
-                            for k,v in service.prtg[3].items():
-                                prtgchannel[k] = v(prtgchannel["value"])
-
-                            data["result"].append(prtgchannel)
+                        data["result"].append(prtgchannel)
 
                 if healthstatus_name in ("red","error"):
                     if service.criticalweight:
@@ -865,6 +877,7 @@ class PRTGMixin(object):
 class HealthCheck(PRTGMixin,JsonStatusMixin):
     configfile = None
     _checkingstatus_loaded = False
+    ID_RE = re.compile("^[a-zA-Z0-9\\-_]+$")
     def __init__(self,configfile=settings.HEALTHCHECK_CONFIGFILE):
         """
         configs : a json file or list object
@@ -993,6 +1006,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             "historyexpire":0,
             "timeout":100,
             "offset":0,
+            "prtg":None,
             "checkingtime":None
         })
         sections[healthchecksection["id"]] = SectionHealthCheck(healthchecksection)
@@ -1131,13 +1145,15 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if isinstance(baseprtgconfig,list):
                     if len(baseprtgconfig) == 0:
                         baseprtgconfig = None
-                    elif len(service["prtg"]) == 1:
-                        baseprtgconfig = baseprtgconfig[0]
+                else:
+                    baseprtgconfig = [baseprtgconfig]
     
-                if isinstance(baseprtgconfig,list):
+                if baseprtgconfig:
                     failed = False
-                    for i in range(len(baseprtgconfig) - 1,-1,-1):
-                        prtgconfig = baseprtgconfig[i]
+                    #initialize the prtg config
+                    #convert the list to map
+                    configs = {}
+                    for prtgconfig in baseprtgconfig:
                         prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
                         if  prtgconfig["unit"].lower() == "custom":
                             prtgconfig["customunit"] = prtgconfig.get("customunit") or "status"
@@ -1146,11 +1162,18 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
                         prtgconfig["value"] = prtgconfig.get("value") or 0
                         if "id" in prtgconfig:
-                            channelid = prtgconfig.get("id")
+                            channelid = prtgconfig.pop("id")
+                            if not self.ID_RE.search(channelid):
+                                errors.append("Section {0}({1}): The channel id({2}) can only contain letters, numbers,'-' and '_'".format(sectionindex,sectionid,channelid))
+                                failed = True
+                                break
+
                         else:
-                            #no channelid
-                            del baseprtgconfig[i]
-                            continue
+                            errors.append("Section {0}({1}): Missing property 'id' in prtg config".format(sectionindex,sectionid))
+                            failed = True
+                            break
+
+                        configs[channelid] = prtgconfig
 
                         for k in prtgconfig.keys():
                             v = prtgconfig[k]
@@ -1166,41 +1189,15 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                                     errors.append("Section {0}({1}): the lambda expression({3}) of the prtg data key({2}) is invalid.".format(sectionindex,sectionid,k,v))
                                     failed = True
                                     break
+
                         if failed:
                             break
 
-                        baseprtgconfig[i] = prtgconfig
 
                     if failed:
                         continue
 
-                else:
-                    baseprtgconfig["unit"] = baseprtgconfig.get("unit") or "Custom"
-                    if  baseprtgconfig["unit"].lower() == "custom":
-                        baseprtgconfig["customunit"] = baseprtgconfig.get("customunit") or "status"
-                    elif "customunit" in baseprtgconfig:
-                        del  baseprtgconfig["customunit"]
-
-                    baseprtgconfig["customunit"] = baseprtgconfig.get("customunit") or "status"
-                    baseprtgconfig["value"] = baseprtgconfig.get("value") or 0
-
-                    failed = False
-                    for k in baseprtgconfig.keys():
-                        v = baseprtgconfig[k]
-                        if not v:
-                            continue
-                        if not isinstance(v,str):
-                            continue
-                        v = v.strip()
-                        if v.startswith("lambda"):
-                            try:
-                                baseprtgconfig[k] = eval(v)
-                            except:
-                                errors.append("Section {0}({1}): the lambda expression({3}) of the prtg data key({2}) is invalid.".format(sectionindex,sectionid,k,v))
-                                failed = True
-                                break
-                    if failed:
-                        continue
+                    baseprtgconfig = configs
 
             services = OrderedDict()
             serviceindex = 0
@@ -1356,100 +1353,61 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 service["timeout"] = timeout
                 service["request_timeout"] = timeout / 1000.0
 
-                #sync the config from  prtg config in section to service config
+                #merge the sector's prtg config into service's prtg config
                 if service.get("prtg"):
-                    if baseprtgconfig:
-                        if isinstance(service["prtg"],list):
-                            failed = False
-                            for prtgconfig in service["prtg"]:
-                                for k in prtgconfig.keys():
-                                    v = prtgconfig[k]
-                                    if not v:
-                                        continue
-                                    if not isinstance(v,str):
-                                        continue
-                                    v = v.strip()
-                                    if v.startswith("lambda"):
-                                        try:
-                                            prtgconfig[k] = eval(v)
-                                        except:
-                                            errors.append("Service {0}({1}).{2}({3}): the lambda expression({5}) of the prtg data key({4}) is invalid.".format(sectionindex,sectionid,serviceindex,serviceid,k,v))
-                                            failed = True
-                                            break
-                                if failed:
-                                    break
+                    if not isinstance(service["prtg"],list):
+                        service["prtg"] = [service["prtg"]]
 
-                                channelid = prtgconfig.get("id")
-                                if not channelid:
-                                    continue
-                                baseconfig = next(( c for c in baseprtgconfig if c["id"] == channelid),None)
-                                if not baseconfig:
-                                    continue
-                                #add the base config to service prtg config if it doesn't exist
-                                for k,v in baseconfig.items():
-                                    if k not in prtgconfig:
-                                        prtgconfig[k] = v
-                            if failed:
-                                continue
+                    failed = False
+
+                    for prtgconfig in service["prtg"]:
+                        if "id" in prtgconfig:
+                            channelid = prtgconfig.get("id")
+                            if not self.ID_RE.search(channelid):
+                                errors.append("Service {0}({1}).{2}: The channel id({3}) can only contain letters, numbers,'-' and '_'".format(sectionindex,sectionid,serviceid,channelid))
+                                failed = True
+                                break
                         else:
-                            failed = False
-                            for k in service["prtg"].keys():
-                                v = service["prtg"][k]
-                                if not v:
-                                    continue
-                                if not isinstance(v,str):
-                                    continue
-                                v = v.strip()
-                                if v.startswith("lambda"):
-                                    try:
-                                        service["prtg"][k] = eval(v)
-                                    except:
-                                        errors.append("Service {0}({1}).{2}({3}): the lambda expression({5}) of the prtg data key({4}) is invalid.".format(sectionindex,sectionid,serviceindex,serviceid,k,v))
-                                        failed = True
-                                        break
-                            if failed:
+                            errors.append("Service {0}({1}).{2}: Missing property 'id' in prtg config".format(sectionindex,sectionid,serviceid))
+                            failed = True
+                            break
+
+                        for k in prtgconfig.keys():
+                            v = prtgconfig[k]
+                            if not v:
                                 continue
+                            if not isinstance(v,str):
+                                continue
+                            v = v.strip()
+                            if v.startswith("lambda"):
+                                try:
+                                    prtgconfig[k] = eval(v)
+                                except:
+                                    errors.append("Service {0}({1}).{2}({3}): the lambda expression({5}) of the prtg data key({4}) is invalid.".format(sectionindex,sectionid,serviceindex,serviceid,k,v))
+                                    failed = True
+                                    break
+                        if failed:
+                            break
 
-                            baseconfig = None
-                            if isinstance(baseprtgconfig,list):
-                                channelid = service["prtg"].get("id")
-                                if channelid:
-                                    baseconfig = next(( c for c in baseprtgconfig if c["id"] == channelid),None)
-                            else:
-                                baseconfig = baseprtgconfig
+                        #find the baseconfig
+                        baseconfig = baseprtgconfig.get(prtgconfig["id"])
 
-                            if baseconfig:
-                                #add the base config to service prtg config if it doesn't exist
-                                for k,v in baseconfig.items():
-                                    if k not in service["prtg"]:
-                                        service["prtg"][k] = v
-                elif baseprtgconfig:
-                    if isinstance(baseprtgconfig,list):
-                        service["prtg"] = []
-                        for prtgconfig in baseprtgconfig:
-                            service["prtg"].append(dict(prtgconfig))
-                    else:
-                        service["prtg"] = dict(baseprtgconfig)
+                        if not baseconfig:
+                            continue
+                        #add the base config to service prtg config if it doesn't exist
+                        for k,v in baseconfig.items():
+                            if k not in prtgconfig:
+                                prtgconfig[k] = v
+                    if failed:
+                        continue
                 else:
-                    service["prtg"] = {
-                        "customunit":"status",
-                        "unit":"Custom",
-                        "value": 0
-                    }
+                    service["prtg"] = None
 
-                if isinstance(service["prtg"],list):
-                    if len(service["prtg"]) == 0:
-                        service["prtg"] = {
-                            "customunit":"status",
-                            "unit":"Custom",
-                            "value": 0
-                        }
-                    elif len(service["prtg"]) == 1:
-                        service["prtg"] = service.get("prtg")[0]
-
-                if isinstance(service["prtg"],list):
-                    for i in range(len(service["prtg"])):
-                        prtgconfig = service["prtg"][i]
+                if service["prtg"]:
+                    #initialize the final prtg config
+                    #convert the prtg config from list to dict
+                    prtgconfigmap = OrderedDict()
+                    for prtgconfig in service["prtg"]:
                         prtgconfig["channel"] = prtgconfig.get("channel") or service["name"]
                         prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
 
@@ -1459,10 +1417,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             del  prtgconfig["customunit"]
 
                         prtgconfig["value"] = prtgconfig.get("value") or 0
-                        if "id" in prtgconfig:
-                            channelid = prtgconfig.pop("id")
-                        else:
-                            channelid = prtgconfig["channel"]
+                        channelid = prtgconfig.pop("id")
 
                         getdata_map = {}
                         for status in ("green","yellow","red","error"):
@@ -1478,36 +1433,10 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         for k in computed_columns.keys():
                             del prtgconfig[k]
 
-                        service["prtg"][i] = (channelid,prtgconfig,getdata_map,computed_columns)
-                else:
-                    service["prtg"]["channel"] = service["prtg"].get("channel") or service["name"]
-                    service["prtg"]["unit"] = service["prtg"].get("unit") or "Custom"
-                    if  service["prtg"]["unit"].lower() == "custom":
-                        service["prtg"]["customunit"] = service["prtg"].get("customunit") or "status"
-                    elif "customunit" in service["prtg"]:
-                        del service["prtg"]["customunit"]
+                        prtgconfigmap[channelid] = (prtgconfig,getdata_map,computed_columns)
 
-                    service["prtg"]["value"] = service["prtg"].get("value") or 0
-                    if "id" in service["prtg"]:
-                        channelid = service["prtg"].pop("id")
-                    else:
-                        channelid = service["prtg"]["channel"]
+                    service["prtg"] = prtgconfigmap
 
-                    getdata_map = {}
-                    for status in ("green","yellow","red","error"):
-                        key = "data4{}".format(status)
-                        if key in service["prtg"]:
-                            getdata_map[status] = service["prtg"].pop(key)
-
-                    computed_columns = {}
-                    for k,v in service["prtg"].items():
-                        if callable(v):
-                            computed_columns[k] = v
-
-                    for k in computed_columns.keys():
-                        del service["prtg"][k]
-
-                    service["prtg"] = (channelid,service["prtg"],getdata_map,computed_columns)
 
                 if not service["healthchecks"]:
                     errors.append("Service {0}({1}).{2}({3}): Missing healthcheck configuration".format(sectionindex,sectionid,serviceindex,serviceid))
@@ -1520,21 +1449,26 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             del config["services"][serviceid]["healthchecks"][key]
                             continue
 
-                        if isinstance(service["prtg"],list):
+                        if service["prtg"]:
                             prtgdata_map = {}
                             if isinstance(service["healthchecks"][key],(list,tuple)):
                                 prtgdata_config = {}
                             else:
                                 prtgdata_config = service["healthchecks"][key].get('prtg',{})
                                 if not isinstance(prtgdata_config,dict):
-                                    errors.append("Service {0}({1}).{2}({3}).{4}: The prtg config({5}) should be dict type".format(sectionindex,sectionid,serviceindex,serviceid,key,prtgdata_config))
-                                    prtgdata_config = {}
+                                    if len(service["prtg"]) > 1 :
+                                        errors.append("Service {0}({1}).{2}({3}).{4}: The service declares multiple prtg channels ,the prtg config({5}) should be dict type".format(sectionindex,sectionid,serviceindex,serviceid,key,prtgdata_config))
+                                        prtgdata_config = {}
+                                    else:
+                                        channelid = next(k for k in service["prtg"].keys())
+                                        prtgdata_config = {channelid:prtgdata_config}
 
-                            for prtgconfig in service["prtg"]:
-                                if prtgconfig[0] in prtgdata_config:
-                                    prtgdata_map[prtgconfig[0]] = checks.get_prtg_factory(prtgdata_config[prtgconfig[0]]) 
-                                elif key in prtgconfig[2]:
-                                    prtgdata_map[prtgconfig[0]] = checks.get_prtg_factory(prtgconfig[2][key]) 
+
+                            for channelid,prtgconfig in service["prtg"].items():
+                                if channelid in prtgdata_config:
+                                    prtgdata_map[channelid] = checks.get_prtg_factory(prtgdata_config[channelid]) 
+                                elif key in prtgconfig[1]:
+                                    prtgdata_map[channelid] = checks.get_prtg_factory(prtgconfig[1][key]) 
 
                             if isinstance(service["healthchecks"][key],(list,tuple)):
                                 service["healthchecks"][key] = [
@@ -1547,41 +1481,6 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                                     checks.init_conds(service["healthchecks"][key].get("condition")),
                                     checks.get_message_factory(service["healthchecks"][key].get('message')),
                                     prtgdata_map
-                                ]
-                        elif service["prtg"]:
-                            if isinstance(service["healthchecks"][key],(list,tuple)):
-                                prtgdata_config = None
-                            else:
-                                prtgdata_config = service["healthchecks"][key].get('prtg')
-
-                            prtgconfig = service["prtg"]
-                            prtgdata = None
-                            if prtgdata_config:
-                                #Have get prtg data config
-                                if isinstance(prtgdata_config,dict):
-                                    #get prtg data config is dict
-                                    if prtgconfig[0] in prtgdata_config:
-                                        #Found the prtg data config for the channel
-                                        prtgdata = checks.get_prtg_factory(prtgdata_config[prtgconfig[0]]) 
-                                    elif key in prtgconfig[2]:
-                                        #Found the default prtg data config for the status
-                                        prtgdata = checks.get_prtg_factory(prtgconfig[2][key]) 
-                                else:
-                                    prtgdata = checks.get_prtg_factory(prtgdata_config) 
-                            elif key in prtgconfig[2]:
-                                prtgdata = checks.get_prtg_factory(prtgconfig[2][key]) 
-
-                            if isinstance(service["healthchecks"][key],(list,tuple)):
-                                service["healthchecks"][key] = [
-                                    checks.init_conds(service["healthchecks"][key]),
-                                    checks.get_message_factory(None),
-                                    prtgdata
-                                ]
-                            else:
-                                service["healthchecks"][key] = [
-                                    checks.init_conds(service["healthchecks"][key].get("condition")),
-                                    checks.get_message_factory(service["healthchecks"][key].get('message')),
-                                    prtgdata
                                 ]
                         else:
                             if isinstance(service["healthchecks"][key],(list,tuple)):
@@ -1759,18 +1658,12 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if checkresult:
                     checkmsg = get_checkmessage(res)
                     if serviceconfig["prtg"]:
-                        if isinstance(serviceconfig["prtg"],list):
-                            prtgdata = {}
-                            for prtgchannel in serviceconfig["prtg"]:
-                                if get_prtgdata.get(prtgchannel[0]):
-                                    prtgdata[prtgchannel[0]] = get_prtgdata[prtgchannel[0]](res)
-                        elif get_prtgdata:
-                            prtgdata = get_prtgdata(res)
-                        else:
-                            #don't have the config to get the prtg data, use the default prtg data
-                            prtgdata = None
+                        prtgdata = {}
+                        for channelid in serviceconfig["prtg"].keys():
+                            if get_prtgdata.get(channelid):
+                                prtgdata[channelid] = get_prtgdata[channelid](res)
                     else:
-                        prtgdata = PRTG_DATA_NOT_AVAILABLE
+                        prtgdata = PRTGDATA_NOT_ENABLED
 
                     if not isinstance(checkmsg,str):
                         checkmsg = json.dumps(checkmsg,indent=4,cls=serializers.JSONFormater)
@@ -1962,6 +1855,9 @@ class SystemViewMeta(list):
     def description(self,v):
         self[2] = v
 
+class PRTGSensorMeta(SystemViewMeta):
+    pass
+
 class UserViewMeta(object):
     def __init__(self,user,healthcheck):
         self._user = user
@@ -1977,6 +1873,34 @@ class UserViewMeta(object):
     @property
     def description(self):
         return "The view contains only user interested systems"
+
+class SelectablePRTGChannel(object):
+    def __init__(self,channelid,channelname,selected):
+        self.channelid = channelid
+        self.channelname = channelname
+        self.selected = selected
+
+
+class ServiceHealthCheckPRTGSensor(object):
+    def __init__(self,servicehealthcheck,channelsettings):
+        self._servicehealthcheck = servicehealthcheck
+        self._channelsettings = channelsettings
+
+    def __getattr__(self,name):
+        return getattr(self._servicehealthcheck,name)
+
+    def __getitem__(self,name):
+        return self._servicehealthcheck.get(name)
+
+    @property
+    def prtgchannels(self):
+        if not self._channelsettings:
+            return []
+        return filter(lambda item: item[0] in self._channelsettings, self._servicehealthcheck.prtgchannels)
+
+    @property
+    def selectableprtgchannels(self):
+        return map(lambda item: SelectablePRTGChannel(item[0],item[1][0]["channel"],self._channelsettings is not None and item[0] in self._channelsettings),self._servicehealthcheck.prtgchannels)
 
 class SelectableServiceHealthCheck(object):
     def __init__(self,servicehealthcheck,selected):
@@ -2011,6 +1935,28 @@ class SectionHealthCheckView(object):
     def selectablehealthcheckservices(self):
         return map(lambda service: SelectableServiceHealthCheck(service,self._viewsettings is not None and service.serviceid in self._viewsettings),self._sectionhealthcheck.healthcheckservices)
 
+class SectionHealthCheckPRTGSensor(object):
+    def __init__(self,sectionhealthcheck,sensorsettings):
+        self._sectionhealthcheck = sectionhealthcheck
+        self._sensorsettings = sensorsettings
+
+    def __getattr__(self,name):
+        return getattr(self._sectionhealthcheck,name)
+
+    def __getitem__(self,name):
+        return self._sectionhealthcheck.get(name)
+
+    @property
+    def healthcheckservices(self):
+        if not self._sensorsettings:
+            return []
+        return map(lambda service: ServiceHealthCheckPRTGSensor(service,self._sensorsettings.get(service.serviceid,None) ), filter(lambda service: service.prtgenabled and service.serviceid in self._sensorsettings, self._sectionhealthcheck.healthcheckservices))
+
+    @property
+    def selectablehealthcheckservices(self):
+        return map(lambda service: ServiceHealthCheckPRTGSensor(service,self._sensorsettings.get(service.serviceid,None) if self._sensorsettings else None ), filter(lambda service:service.prtgenabled,self._sectionhealthcheck.healthcheckservices))
+
+
 class HealthCheckView(PRTGMixin,JsonStatusMixin):
     def __init__(self,healthcheck,viewmeta,viewsettings):
         self._healthcheck = healthcheck
@@ -2019,7 +1965,7 @@ class HealthCheckView(PRTGMixin,JsonStatusMixin):
 
     @property
     def title(self):
-        return self._viewmeta.title
+        return self._viewmeta.title if self._viewmeta else ""
 
     @property
     def healthchecksections(self):
@@ -2031,11 +1977,32 @@ class HealthCheckView(PRTGMixin,JsonStatusMixin):
     def selectablehealthchecksections(self):
         return map(lambda section: SectionHealthCheckView(section,self._viewsettings.get(section.sectionid,set()) if self._viewsettings else None ), self._healthcheck.healthchecksections)
 
+class HealthCheckPRTGSensor(PRTGMixin,JsonStatusMixin):
+    def __init__(self,healthcheck,sensormeta,sensorsettings):
+        self._healthcheck = healthcheck
+        self._sensormeta = sensormeta
+        self._sensorsettings = sensorsettings
+
+    @property
+    def title(self):
+        return self._sensormeta.title if self._sensormeta else ""
+
+    @property
+    def healthchecksections(self):
+        if not self._sensorsettings:
+            return []
+        return map(lambda section: SectionHealthCheckPRTGSensor(section,self._sensorsettings.get(section.sectionid,{}) ), filter(lambda section: section.prtgenabled and self._sensorsettings and section.sectionid in self._sensorsettings, self._healthcheck.healthchecksections))
+
+    @property
+    def selectablehealthchecksections(self):
+        return map(lambda section: SectionHealthCheckPRTGSensor(section,self._sensorsettings.get(section.sectionid,{}) if self._sensorsettings else None ), filter(lambda section: section.prtgenabled,self._healthcheck.healthchecksections))
+
 class ReleasedHealthCheck(HealthCheck):
 
     def __init__(self):
         super().__init__(configfile=settings.HEALTHCHECK_CONFIGFILE)
         self._views = {}
+        self._prtgsensorsconfig = {}
         
 
     _editconfigdir = None
@@ -2155,6 +2122,21 @@ class ReleasedHealthCheck(HealthCheck):
 
         return self._systemviewsdir
 
+    _prtgsensorsdir = None
+    @property 
+    def prtgsensorsdir(self):
+        if not self._prtgsensorsdir:
+            configdir,filename = os.path.split(self.configfile)
+            basename = os.path.splitext(filename)[0]
+            d = os.path.join(configdir,"{}.prtgsensors".format(basename))
+            if not os.path.exists(d):
+                utils.makedir(d)
+            elif not os.path.isdir(d):
+                raise Exception("The path({}) is not a folder".format(d))
+            self._prtgsensorsdir = d
+
+        return self._prtgsensorsdir
+
     _userviewsdir = None
     @property 
     def userviewsdir(self):
@@ -2184,6 +2166,13 @@ class ReleasedHealthCheck(HealthCheck):
         if not self._viewsfile:
             self._viewsfile = os.path.join(self.systemviewsdir,"systemviews.json")
         return self._viewsfile
+
+    _prtgsensorsfile = None
+    @property
+    def prtgsensorsfile(self):
+        if not self._prtgsensorsfile:
+            self._prtgsensorsfile = os.path.join(self.prtgsensorsdir,"prtgsensors.json")
+        return self._prtgsensorsfile
 
     _systemviews = [None,None,[]]
     @property 
@@ -2227,8 +2216,51 @@ class ReleasedHealthCheck(HealthCheck):
             self._systemviews[1] = file_size
             self._systemviews[2] = systemviews
 
-
         return self._systemviews[2]
+
+    _prtgsensors = [None,None,[]]
+    @property 
+    def prtgsensors(self):
+        if not os.path.exists(self.prtgsensorsfile):
+            self._prtgsensors[0] = None
+            self._prtgsensors[1] = None
+            self._prtgsensors[2].clear()
+            return self._prtgsensors[2]
+
+        file_size = os.path.getsize(self.prtgsensorsfile)
+        if not file_size:
+            utils.remove_file(self.prtgsensorsfile)
+            self._prtgsensors[0] = None
+            self._prtgsensors[1] = None
+            self._prtgsensors[2].clear()
+            return self._prtgsensors[2]
+
+        file_mtime = os.path.getmtime(self.prtgsensorsfile)
+        if self._prtgsensors[0] != file_mtime  or self._prtgsensors[1] != file_size:
+            prtgsensors = []
+            with open(self.prtgsensorsfile,'r') as f:
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        prtgsensors.append(PRTGSensorMeta(json.loads(line)))
+                    except Exception as ex :
+                        logger.error("{}: Failed to parse the system view({})".format(self,line))
+
+            if not prtgsensors:
+                #no system views
+                utils.remove_file(self.prtgsensorsfile)
+                self._prtgsensors = [None,None,None]
+                return []
+            self._prtgsensors[0] = file_mtime
+            self._prtgsensors[1] = file_size
+            self._prtgsensors[2] = prtgsensors
+
+        return self._prtgsensors[2]
 
     def get_viewsettings(self,key):
         """
@@ -2259,10 +2291,10 @@ class ReleasedHealthCheck(HealthCheck):
             viewsettings = json.loads(data)
             #turn the service list to service set
             #remove the empty secion
-            for key in [k for k in viewsettings.keys()]:
-                viewsettings[key] = set(viewsettings[key])
-                if not viewsettings[key]:
-                    del viewsettings[key]
+            for sector in [k for k in viewsettings.keys()]:
+                viewsettings[sector] = set(viewsettings[sector])
+                if not viewsettings[sector]:
+                    del viewsettings[sector]
             if viewsettings:
                 self._views[key] = [file_mtime,file_size,viewsettings]
             else:
@@ -2274,6 +2306,54 @@ class ReleasedHealthCheck(HealthCheck):
 
 
         return self._views[key][2]
+
+    def get_prtgsensorsettings(self,key):
+        """
+        Return None if no customization, otherwise return {section:{service: sensor set}}
+        """
+        if not key:
+            return None
+        sensorfile = os.path.join(self.prtgsensorsdir,"{}.json".format(key))
+
+        if not os.path.exists(sensorfile):
+            if key in self._prtgsensorsconfig:
+                del self._prtgsensorsconfig[key]
+            return None
+        
+        file_size = os.path.getsize(sensorfile)
+        file_mtime = os.path.getmtime(sensorfile)
+        if not file_size:
+            #no customization
+            utils.remove_file(sensorfile)
+            if key in self._prtgsensorsconfig:
+                del self._prtgsensorsconfig[key]
+            return None
+
+        if key not in self._prtgsensorsconfig or self._prtgsensorsconfig[key][0] != file_mtime or self._prtgsensorsconfig[key][1] != file_size:
+            #file changed, reload the file
+            with open(sensorfile) as f:
+                data = f.read()
+            sensorsettings = json.loads(data)
+            #turn the service list to service set
+            #remove the empty secion
+            for sector in [k1 for k1 in sensorsettings.keys()]:
+                sectorsettings = sensorsettings[sector]
+                for service in [k2 for k2 in sectorsettings.keys()]:
+                    sectorsettings[service] = set(sectorsettings[service])
+                    if not sectorsettings[service]:
+                        del sectorsettings[service]
+                if not sectorsettings:
+                    del sensorsettings[sector]
+            if sensorsettings:
+                self._prtgsensorsconfig[key] = [file_mtime,file_size,sensorsettings]
+            else:
+                #no customization
+                utils.remove_file(sensorfile)
+                if key in self._prtgsensorsconfig:
+                    del self._prtgsensorsconfig[key]
+                return None
+
+        return self._prtgsensorsconfig[key][2]
 
     def save_systemview(self,viewid,title,description):
         systemviews = self.systemviews
@@ -2308,6 +2388,39 @@ class ReleasedHealthCheck(HealthCheck):
             self._systemviews[1] = os.path.getsize(self.systemviewsfile)
             logger.debug("{}: Append the system views file({})".format(self,self.systemviewsfile))
 
+    def save_prtgsensor(self,sensorid,title,description):
+        prtgsensors = self.prtgsensors
+        sensor = next((v for v in prtgsensors if v.id == sensorid),None)
+        if sensor:
+            if sensor.title != title or sensor.description != description:
+                #changed
+                sensor.title = title
+                sensor.description = description
+                firstline = True
+                with open(self.prtgsensorsfile,'wb') as f:
+                    for view in prtgsensors:
+                        if not firstline:
+                            f.write(b'\n')
+                        else:
+                            firstline = False
+                        f.write(json.dumps(view).encode())
+
+                
+                self._prtgsensors[0] = os.path.getmtime(self.prtgsensorsfile)
+                self._prtgsensors[1] = os.path.getsize(self.prtgsensorsfile)
+                logger.debug("{}: Update the prtg sensor file({})".format(self,self.prtgsensorsfile))
+        else:
+            sensor = PRTGSensorMeta([sensorid,title,description])
+            with open(self.prtgsensorsfile,'ab') as f:
+                if len(prtgsensors) > 0:
+                    f.write(b'\n')
+                f.write(json.dumps(sensor).encode())
+
+            prtgsensors.append(sensor)
+            self._prtgsensors[0] = os.path.getmtime(self.prtgsensorsfile)
+            self._prtgsensors[1] = os.path.getsize(self.prtgsensorsfile)
+            logger.debug("{}: Append the prtg sensor file({})".format(self,self.prtgsensorsfile))
+
     def delete_systemview(self,viewid):
         systemviews = self.systemviews
         pos = next((i for i in range(len(systemviews)) if systemviews[i].id == viewid),-1)
@@ -2330,6 +2443,27 @@ class ReleasedHealthCheck(HealthCheck):
         self._systemviews[0] = os.path.getmtime(self.systemviewsfile)
         self._systemviews[1] = os.path.getsize(self.systemviewsfile)
 
+    def delete_prtgsensor(self,sensorid):
+        prtgsensors = self.prtgsensors
+        pos = next((i for i in range(len(prtgsensors)) if prtgsensors[i].id == sensorid),-1)
+        if pos == -1:
+            return
+        sensor = prtgsensors[pos]
+        #remove system view settings in memory and delte setting file
+        self.save_prtgsensorsettings(sensor.id)
+
+        #delete from prtgsensors
+        del prtgsensors[pos]
+        firstline = True
+        with open(self.prtgsensorsfile,'wb') as f:
+            for sensor in prtgsensors:
+                if not firstline:
+                    f.write(b'\n')
+                else:
+                    firstline = False
+                f.write(json.dumps(sensor).encode())
+        self._prtgsensors[0] = os.path.getmtime(self.prtgsensorsfile)
+        self._prtgsensors[1] = os.path.getsize(self.prtgsensorsfile)
 
     def save_viewsettings(self,key,viewsettings=None):
         #remove duplicate service, remove empty section
@@ -2341,11 +2475,12 @@ class ReleasedHealthCheck(HealthCheck):
                 del self._views[key]
             return
 
-        for key in [k for k in viewsettings.keys()]:
-            if not isinstance(viewsettings[key],set):
-                viewsettings[key] = set(viewsettings[key])
-            if not viewsettings[key]:
-                del viewsettings[key]
+        #remove empty sectors
+        for sector in [k for k in viewsettings.keys()]:
+            if not isinstance(viewsettings[sector],set):
+                viewsettings[sector] = set(viewsettings[sector])
+            if not viewsettings[sector]:
+                del viewsettings[sector]
         
         if not viewsettings:
             #no customization
@@ -2354,6 +2489,7 @@ class ReleasedHealthCheck(HealthCheck):
                 del self._views[key]
             return
 
+        #check whether it is customized or not
         customized = False
         for section in self.healthchecksections:
             if section.sectionid not in viewsettings:
@@ -2363,6 +2499,7 @@ class ReleasedHealthCheck(HealthCheck):
                 customized = True
                 break
 
+        #if not customized, remove the settings
         if not customized:
             #not customized
             util.remove_file(viewfile)
@@ -2374,15 +2511,15 @@ class ReleasedHealthCheck(HealthCheck):
             return
 
         #change the service set to service list
-        for key in viewsettings.keys():
-            viewsettings[key] = list(viewsettings[key])
+        for k in viewsettings.keys():
+            viewsettings[k] = list(viewsettings[k])
 
         with open(viewfile,'w') as f:
             f.write(json.dumps(viewsettings,indent=4))
 
         #change the service list back to service set
-        for key in viewsettings.keys():
-            viewsettings[key] = set(viewsettings[key])
+        for k in viewsettings.keys():
+            viewsettings[k] = set(viewsettings[k])
 
         if key in self._views:
             self._views[key][0] = os.path.getmtime(viewfile)
@@ -2393,18 +2530,83 @@ class ReleasedHealthCheck(HealthCheck):
 
         logger.debug("{}: Changed the settings for view({})".format(self,key))
 
-    def get_viewmeta(self,key):
-        if "@" in key:
-            return UserViewMeta(key,self)
-        else:
-            return next((v for v in self.systemviews if v.id == key),SystemViewMeta([key,self.title,"Not Configured"]))
+    def save_prtgsensorsettings(self,key,sensorsettings=None):
+        #remove duplicate service, remove empty section
+        sensorfile = os.path.join(self.prtgsensorsdir,"{}.json".format(key))
+        if not sensorsettings:
+            #no customization
+            utils.remove_file(sensorfile)
+            if key in self._prtgsensorsconfig:
+                del self._prtgsensorsconfig[key]
+            return
 
-    def get_view(self,key):
-        if not key:
+        for sector in [k1 for k1 in sensorsettings.keys()]:
+            sectorsettings = sensorsettings[sector]
+            for service in [k2 for k2 in sectorsettings.keys()]:
+                if not isinstance(sectorsettings[service],set):
+                    sectorsettings[service] = set(sectorsettings[service])
+                if not sectorsettings[service]:
+                    del sectorsettings[service]
+            if not sectorsettings:
+                del sensorsettings[sector]
+        
+        if not sensorsettings:
+            #no customization
+            utils.remove_file(sensorfile)
+            if key in self._prtgsensorsconfig:
+                del self._prtgsensorsconfig[key]
+            return
+
+        if key in self._prtgsensorsconfig and self._prtgsensorsconfig[key][2] == sensorsettings:
+            return
+
+        #change the service set to service list
+        for sectorsettings in sensorsettings.values():
+            for k in sectorsettings.keys():
+                sectorsettings[k] = list(sectorsettings[k])
+
+        with open(sensorfile,'w') as f:
+            f.write(json.dumps(sensorsettings,indent=4))
+
+        #change the service list back to service set
+        for sectorsettings in sensorsettings.values():
+            for k in sectorsettings.keys():
+                sectorsettings[k] = set(sectorsettings[k])
+
+        if key in self._prtgsensorsconfig:
+            self._prtgsensorsconfig[key][0] = os.path.getmtime(sensorfile)
+            self._prtgsensorsconfig[key][1] = os.path.getsize(sensorfile)
+            self._prtgsensorsconfig[key][2] = sensorsettings
+        else:
+            self._prtgsensorsconfig[key] = [os.path.getmtime(sensorfile),os.path.getsize(sensorfile),sensorsettings]
+
+        logger.debug("{}: Changed the settings for prtg sensor({})".format(self,key))
+
+    def get_viewmeta(self,viewid):
+        if "@" in viewid:
+            return UserViewMeta(viewid,self)
+        else:
+            return next((v for v in self.systemviews if v.id == viewid),None)
+
+    def get_prtgsensormeta(self,sensorid):
+        return next((v for v in self.prtgsensors if v.id == sensorid),None)
+
+    def get_view(self,viewid):
+        if not viewid:
             return self
-        viewmeta = self.get_viewmeta(key)
-        viewsettings = self.get_viewsettings(key)
+        viewmeta = self.get_viewmeta(viewid)
+        viewsettings = self.get_viewsettings(viewid)
         return HealthCheckView(self,viewmeta,viewsettings)
+
+    def get_prtgsensor(self,sensorid):
+        if not sensorid:
+            raise Exception("Missing sensor id.")
+        sensormeta = self.get_prtgsensormeta(sensorid)
+        if not sensormeta:
+            raise Exception("PRTG sensor({}) doesn't exist.".format(sensorid))
+
+        sensorsettings = self.get_prtgsensorsettings(sensorid)
+        return HealthCheckPRTGSensor(self,sensormeta,sensorsettings)
 
 healthcheck = ReleasedHealthCheck()
 
