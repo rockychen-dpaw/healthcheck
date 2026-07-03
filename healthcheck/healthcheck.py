@@ -29,7 +29,7 @@ from .locks import FileLock
 logger = logging.getLogger("healthcheck.healthcheck")
 
 #urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-PRTGDATA_NOT_ENABLED = "__DISABLED__"
+PRTGDATA_NOT_ENABLED = "Disabled"
 
 class BaseServiceHealthCheckTask(object):
     def __init__(self,servicehealthcheck):
