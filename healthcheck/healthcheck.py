@@ -1390,7 +1390,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             break
 
                         #find the baseconfig
-                        baseconfig = baseprtgconfig.get(prtgconfig["id"])
+                        baseconfig = baseprtgconfig.get(prtgconfig["id"]) if baseprtgconfig else None
 
                         if not baseconfig:
                             continue
