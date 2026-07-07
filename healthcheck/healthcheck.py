@@ -1367,6 +1367,9 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                                 errors.append("Service {0}({1}).{2}: The channel id({3}) can only contain letters, numbers,'-' and '_'".format(sectionindex,sectionid,serviceid,channelid))
                                 failed = True
                                 break
+                        elif len(service["prtg"]) == 1:
+                            #only have one channle, use serviceid as default channle id
+                            prtgconfig["id"] == serviceid
                         else:
                             errors.append("Service {0}({1}).{2}: Missing property 'id' in prtg config".format(sectionindex,sectionid,serviceid))
                             failed = True
