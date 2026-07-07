@@ -23,6 +23,7 @@ Next Check Time : N/A
 
 let connect_msg = "initial connecting..."
 let connected = false
+let lasttime2receivedata = new Date()
 const statuslist = ["green","yellow","red","error"]
 
 function browserside_check() {
@@ -100,6 +101,12 @@ if (typeof continuouscheck_stopped === "function") {
 
 function fetch_healthstatus() {
     connected = false
+    if ((new Date() - lasttime2receivedata) > 120000) {
+        //never receive any data in latest 2+ minutes
+        //reload the page
+        window.location.reload(true);
+        return 
+    }
     fetch("{{statusstreamurl}}",{redirect:"manual"})
     .then((response) => {
         const decoderStream = new TextDecoderStream();
@@ -118,6 +125,7 @@ function fetch_healthstatus() {
           // "done" is a Boolean and value a "Uint8Array"
           reader.read().then(({ done, value }) => {
           // If there is no more data to read
+              lasttime2receivedata = new Date()
               if (done) {  
                   setTimeout(fetch_healthstatus,5000)
                   return;
