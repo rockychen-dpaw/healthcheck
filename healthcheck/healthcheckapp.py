@@ -419,7 +419,7 @@ async def healthcheckhistory(sectionid,serviceid,pageid):
     else:
         page = None
 
-    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",title="Health Check Histories")
+    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",history="history",title="Health Check Histories")
 
 @app.route("/healthcheck/errorhistory/<sectionid>/<serviceid>",defaults={'pageid': ""})
 @app.route("/healthcheck/errorhistory/<sectionid>/<serviceid>/<pageid>")
@@ -438,17 +438,17 @@ async def healthcheckerrorhistory(sectionid,serviceid,pageid):
         try:
             pageid = int(pageid)
         except:
-            return redirect("/healthcheck/history/{}/{}".format(sectionid,serviceid))
+            return redirect("/healthcheck/errorhistory/{}/{}".format(sectionid,serviceid))
 
         page = next((p for p in pages if pageid == p.pageid),None)
         if not page:
-            return redirect("/healthcheck/history/{}/{}".format(sectionid,serviceid))
+            return redirect("/healthcheck/errorhistory/{}/{}".format(sectionid,serviceid))
     elif pages:
         page = pages[-1]
     else:
         page = None
 
-    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",title="Health Check Error Histories")
+    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",history="errorhistory",title="Health Check Error Histories")
 
 @app.route("/healthcheck/details/<sectionid>/<serviceid>/<starttime>")
 async def healthcheckdetails(sectionid,serviceid,starttime):
@@ -464,7 +464,7 @@ async def healthcheckdetails(sectionid,serviceid,starttime):
             data = f.read()
         return data,200,{"Content-Type":"application/json"}
     except Exception as ex:
-        return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config",message=str(ex))
+        return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",history="history",message=str(ex))
 
 @app.route("/healthcheck/config/edit",methods=["GET","POST"])
 async def edit_healthcheck():
@@ -614,10 +614,41 @@ async def editinghealthcheckhistory(sectionid,serviceid,pageid):
     else:
         page = None
 
-    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config")
+    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config",history="history")
 
-@app.route("/healthcheck/config/details/<sectionid>/<serviceid>/<pageid>/<starttime>")
-async def editinghealthcheckdetails(sectionid,serviceid,pageid,starttime):
+@app.route("/healthcheck/config/errorhistory/<sectionid>/<serviceid>",defaults={'pageid': ""})
+@app.route("/healthcheck/config/errorhistory/<sectionid>/<serviceid>/<pageid>")
+async def editinghealthcheckerrorhistory(sectionid,serviceid,pageid):
+    editable = await can_admin(request)
+    if not editable:
+        return "Not Authorized", 403
+
+    service = healthcheck.editing_healthcheck.get_service(sectionid,serviceid)
+    if not service:
+        return "The service({}.{}) doesn't exist".format(sectionid,serviceid) ,404
+
+    errorpages = service.healthcheckpages.errorpages
+    if not errorpages:
+        return "The error history of the service({}.{}) is not enabled.".format(sectionid,serviceid) ,404
+
+    pages = errorpages.get_pages()
+    if pageid:
+        try:
+            pageid = int(pageid)
+        except:
+            return redirect("/healthcheck/config/errorhistory/{}/{}".format(sectionid,serviceid))
+        page = next((p for p in pages if pageid == p.pageid),None)
+        if not page:
+            return redirect("/healthcheck/config/errorhistory/{}/{}".format(sectionid,serviceid))
+    elif pages:
+        page = pages[-1]
+    else:
+        page = None
+
+    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config",history="errorhistory")
+
+@app.route("/healthcheck/config/details/<sectionid>/<serviceid>/<starttime>")
+async def editinghealthcheckdetails(sectionid,serviceid,starttime):
     editable = await can_admin(request)
     if not editable:
         return "Not Authorized", 403
@@ -629,31 +660,12 @@ async def editinghealthcheckdetails(sectionid,serviceid,pageid,starttime):
     starttime = datetime.strptime(starttime,'%Y-%m-%dT%H:%M:%S.%f').replace(tzinfo=settings.TZ)
 
     try:
-        pageid = int(pageid)
-    except:
-        return "Details Not Found",404
-
-    page = None
-    pages = service.healthcheckpages.get_pages()
-    if pageid == 0:
-        for p in reversed(pages):
-            if isinstance(p,LastHealthCheck) or p.starttime <= starttime:
-                page = p
-                break
-    else:
-        page = next((p for p in pages if pageid == p.pageid),None)
-
-    if not page:
-        return "Details Not Found",404
-
-
-    try:
-        detailfile = page.detailfile(starttime)
+        detailfile = service.healthcheckpages.detailfile(starttime)
         with open(detailfile) as f:
             data = f.read()
         return data,200,{"Content-Type":"application/json"}
     except Exception as ex:
-        return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config",message=str(ex))
+        return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config",history="history",message=str(ex))
 
 
 @app.route("/healthcheck/config/preview/start",methods=["GET"])
