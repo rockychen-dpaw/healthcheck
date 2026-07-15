@@ -127,6 +127,10 @@ class SectionHealthCheck(UserDict):
     def prtgenabled(self):
         return any(s.prtgenabled for s in self.healthcheckservices)
 
+    @property
+    def enabled(self):
+        return self["enabled"]
+
 class HealthCheckStatus(object):
     @staticmethod
     def serialize(data):
@@ -156,7 +160,6 @@ class HealthCheckPage(object):
         self._healthcheckpages = healthcheckpages
         self._starttime = starttime
         self._filepath = filepath
-        self._basedir = os.path.dirname(self._filepath)
         self._size = None
         self._last_healthcheck = None
 
@@ -181,7 +184,7 @@ class HealthCheckPage(object):
         return self._last_healthcheck
  
     def delete(self):
-        utils.deletedir(self._basedir)
+        utils.remove_file(self._filepath)
 
     def serialize(self):
         return json.dumps([self._starttime.strftime("%Y-%m-%dT%H:%M:%S.%f"),self._filepath[len(self._healthcheckpages.basedir) + 1:]])
@@ -203,7 +206,7 @@ class HealthCheckPage(object):
         return self._size
 
     def detailfile(self,starttime):
-        return os.path.join(self._basedir,"{}.json".format(starttime.strftime("%Y%m%dT%H%M%S")))
+        return self._healthcheckpages.detailfile(starttime)
 
     def _load(self):
         if self._size is not None:
@@ -283,9 +286,6 @@ class LastHealthCheck(HealthCheckPage):
     def __init__(self,healthcheckpages,path):
         super().__init__(healthcheckpages,None,path)
 
-    def detailfile(self,starttime):
-        return os.path.join(self._basedir,"lasthealthcheckdetails.json")
-
     def serialize(self):
         raise Exception("Not Support")
 
@@ -333,18 +333,21 @@ class LastHealthCheckInMemory(LastHealthCheck):
         """
         self._size = 0
 
-class HealthCheckPages(object):
+class BasicHealthCheckPages(object):
     """
     pages: a list of page data([startdatetime,page file])
     """
-    _instances = {}
+    _instances = None
+    _pageindexfilename = None
+    _pagefilename = None
+    _pagefolder = None
     def __init__(self,servicehealthcheck):
         self._servicehealthcheck = servicehealthcheck
-        self.historyenabled = self._servicehealthcheck.historyenabled
-        self._pages = None
-        self.next_management_time = None
+        self._pages = None #from earlist to latest
         self._filesize = None
-        self._lock = FileLock(os.path.join(self.basedir,".lock"))
+        self.next_management_time = None
+        self._historyexpire = 0
+        self.historyenabled = False
 
 
     @classmethod
@@ -356,30 +359,17 @@ class HealthCheckPages(object):
 
         sectiondata = configdata.get(servicehealthcheck.sectionid)
         if not sectiondata:
-            obj = HealthCheckPages(servicehealthcheck)
+            obj = cls(servicehealthcheck)
             cls._instances[servicehealthcheck.sectionid] = {servicehealthcheck.serviceid:obj}
         else:
             obj = sectiondata.get(servicehealthcheck.serviceid)
             if not obj:
-                obj = HealthCheckPages(servicehealthcheck)
+                obj = cls(servicehealthcheck)
                 sectiondata[servicehealthcheck.serviceid] = obj
             else:
                 obj.servicehealthcheck = servicehealthcheck
 
         return obj
-
-    @property
-    def last_healthcheck(self):
-        """
-        Called by healthcheck server
-        because _pages are loaded and catched in memory and only healthcheck server can change this file, no need to check whether the file was changed by other process after loading.
-        """
-        if self._pages is None:
-            self._load()
-        if self._pages:
-            return self._pages[-1].last_healthcheck
-        else:
-            return None
 
     @property
     def servicehealthcheck(self):
@@ -409,89 +399,105 @@ class HealthCheckPages(object):
             raise Exception("{}: History health check is disabled".format(self._servicehealthcheck))
 
         if self._pageindexfile is None:
-            self._pageindexfile = os.path.join(self.basedir,"pageindex.json")
+            self._pageindexfile = os.path.join(self.basedir,self._pageindexfilename)
 
         return self._pageindexfile
 
     def pagedir(self,starttime):
-        return os.path.join(self.basedir,starttime.strftime("%Y%m%dT%H%M%S"))
+        return os.path.join(self.basedir,self._pagefolder)
 
     def pagefile(self,starttime):
-        if self.historyenabled:
-            return os.path.join(self.pagedir(starttime),"page.json")
+        return os.path.join(self.pagedir(starttime),self._pagefilename.format(starttime.strftime("%Y%m%dT%H%M%S")))
+
+    @property
+    def detailsdir(self):
+        return  os.path.join(self.basedir,"details")
+
+    def detaildir(self,starttime):
+        folder =  os.path.join(self.detailsdir,starttime.strftime("%Y%m%d"))
+        utils.makedir(folder)
+        return folder
+
+    def detailfile(self,starttime):
+        return os.path.join(self.detaildir(starttime),"{}.json".format(starttime.strftime("%Y%m%dT%H%M%S")))
+
+    @property
+    def last_healthcheck(self):
+        """
+        Called by healthcheck server
+        because _pages are loaded and catched in memory and only healthcheck server can change this file, no need to check whether the file was changed by other process after loading.
+        """
+        if self._pages is None:
+            self._load()
+        if self._pages:
+            return self._pages[-1].last_healthcheck
         else:
-            return os.path.join(self.basedir,"latesthealthcheck.json")
+            return None
 
     def _load(self):
-        if not self._servicehealthcheck.url:
-            #is not a real healthcheck,for example: heartbeat
-            self._pages = [LastHealthCheckInMemory(self,self.pagefile(None))]
-        elif not self.historyenabled:
-            self._pages = [LastHealthCheck(self,self.pagefile(None))]
+        pages = []
+        if not os.path.exists(self.pageindexfile):
+            folder = os.path.dirname(self.pageindexfile)
+            utils.makedir(folder)
+        elif not os.path.isfile(self.pageindexfile):
+            raise Exception("The file path({}) is not a file".format(self.pageindexfile))
         else:
-            pages = []
-            if not os.path.exists(self.pageindexfile):
-                folder = os.path.dirname(self.pageindexfile)
-                utils.makedir(folder)
-            elif not os.path.isfile(self.pageindexfile):
-                raise Exception("The file path({}) is not a file".format(self.pageindexfile))
-            else:
-                with open(self.pageindexfile,'r') as f:
-                    while True:
-                        data = f.readline()
-                        if data == "":
-                            break
-                        data = data.strip()
-                        if not data:
-                            continue
-                        try:
-                            pages.append(HealthCheckPage.deserialize(self,data))
-                        except Exception as ex:
-                            logger.error("The page data({1}) in file({0}) is corrupted".format(self.pageindexfile,data))
-    
-            self._pages = pages
-            if os.path.exists(self.pageindexfile):
-                self._filesize = os.path.getsize(self.pageindexfile)
-            else:
-                self._filesize = 0
+            with open(self.pageindexfile,'r') as f:
+                while True:
+                    data = f.readline()
+                    if data == "":
+                        break
+                    data = data.strip()
+                    if not data:
+                        continue
+                    try:
+                        pages.append(HealthCheckPage.deserialize(self,data))
+                    except Exception as ex:
+                        logger.error("The page data({1}) in file({0}) is corrupted".format(self.pageindexfile,data))
+
+        self._pages = pages
+        if os.path.exists(self.pageindexfile):
+            self._filesize = os.path.getsize(self.pageindexfile)
+        else:
+            self._filesize = 0
 
     def get_pages(self):
         """
         Called by web app; should reload if if it was changed by healthcheck server
         """
-        if self._filesize is None or self._filesize != os.path.getsize(self.pageindexfile):
+        if self._filesize is None or (os.path.exists(self.pageindexfile) and self._filesize != os.path.getsize(self.pageindexfile)):
             self._load()
         return self._pages
 
-    def save(self,healthcheckstatus,details=None):
+    def save(self,healthcheckstatus):
         if self._pages is None:
             self._load()
-        with self._lock:
-            try:
+
+        try:
+            if self._pages:
+                if self._pages[-1].save(healthcheckstatus):
+                    return
+
+            newpage = HealthCheckPage(self,healthcheckstatus[0],self.pagefile(healthcheckstatus[0]))
+
+            with open(self.pageindexfile,'ab') as f:
                 if self._pages:
-                    if self._pages[-1].save(healthcheckstatus):
-                        return
-    
-                newpage = HealthCheckPage(self,healthcheckstatus[0],self.pagefile(healthcheckstatus[0]))
-    
-                with open(self.pageindexfile,'ab') as f:
-                    if self._pages:
-                        f.write(b"\n")
-                    f.write(newpage.serialize().encode())
-                self._pages.append(newpage)
-    
-                newpage.save(healthcheckstatus)
-            finally:
-                if details:
-                    with open(self._pages[-1].detailfile(healthcheckstatus[0]),'w') as f:
-                        f.write(json.dumps(details,cls=serializers.JSONFormater))
-                self.managepages()
+                    f.write(b"\n")
+                f.write(newpage.serialize().encode())
+            self._pages.append(newpage)
+
+            newpage.save(healthcheckstatus)
+        finally:
+            self.managepages()
 
 
     def managepages(self):
+        """
+        Return True if expired pages have been cleaned; otherwise return False
+        """
         if not self.historyenabled:
             #no need to manage
-            return 
+            return  False
 
         now = utils.now()
         if self.next_management_time and now < self.next_management_time:
@@ -504,19 +510,19 @@ class HealthCheckPages(object):
             self.next_management_time = datetime(now.year,now.month,now.day,tzinfo=settings.TZ) + timedelta(days=1)
 
         if manage_history:
-            ealiest_checkingtime = datetime(now.year,now.month,now.day,tzinfo=settings.TZ)
-            if self._servicehealthcheck.historyexpire > 1:
-                ealiest_checkingtime -= timedelta(days=self._servicehealthcheck.historyexpire - 1)
+            ealiest_nonexpiretime = datetime(now.year,now.month,now.day,tzinfo=settings.TZ)
+            if self._historyexpire > 1:
+                ealiest_nonexpiretime -= timedelta(days=self._historyexpire - 1)
             #find the index of the last expired data
-            last_removeindex = -1
+            index_of_latest_expiredata = -1
             for i in range(1,len(self._pages)):
-                if self._pages[i - 1].starttime <= ealiest_checkingtime:
-                    last_removeindex = i - 1
+                if self._pages[i - 1].starttime < ealiest_nonexpiretime:
+                    index_of_latest_expiredata = i - 1
                 else:
                     break
-            if last_removeindex >= 0:
+            if index_of_latest_expiredata >= 0:
                 #remove expired data from memory
-                for i in range(last_removeindex,-1,-1):
+                for i in range(index_of_latest_expiredata,-1,-1):
                     self._pages[i].delete()
                     del self._pages[i]
                 #save to file
@@ -525,6 +531,96 @@ class HealthCheckPages(object):
                         if i > 0:
                             f.write(b"\n")
                         f.write(self._pages[i].serialize().encode())
+            return True
+        else:
+            return False
+
+class HealthCheckPages(BasicHealthCheckPages):
+    """
+    pages: a list of page data([startdatetime,page file])
+    """
+    _instances = {}
+    _pageindexfilename = "pageindex.json"
+    _pagefilename = "page_{}.json"
+    _pagefolder = "pages"
+    def __init__(self,servicehealthcheck):
+        super().__init__(servicehealthcheck)
+        self.historyenabled = self._servicehealthcheck.historyenabled
+        self._lock = FileLock(os.path.join(self.basedir,".lock"))
+        self._historyexpire = self._servicehealthcheck.historyexpire
+        self._errorpages = HealthCheckErrorPages.get_instance(servicehealthcheck) if servicehealthcheck.errorhistoryenabled else None
+
+    @property
+    def errorpages(self):
+        return self._errorpages
+
+    def pagefile(self,starttime):
+        if self.historyenabled:
+            return super().pagefile(starttime)
+        else:
+            return os.path.join(self.basedir,"latesthealthcheck.json")
+
+    def detailfile(self,starttime):
+        if not self._servicehealthcheck.url:
+            #is not a real healthcheck,for example: heartbeat
+            raise Exception("Not Support")
+        elif not self.historyenabled:
+            return os.path.join(self.basedir,"lasthealthcheckdetails.json")
+        else:
+            return super().detailfile(starttime)
+        
+        return os.path.join(self.basedir,"{}.json".format(starttime.strftime("%Y%m%dT%H%M%S")))
+
+    def _load(self):
+        if not self._servicehealthcheck.url:
+            #is not a real healthcheck,for example: heartbeat
+            self._pages = [LastHealthCheckInMemory(self,self.pagefile(None))]
+        elif not self.historyenabled:
+            self._pages = [LastHealthCheck(self,self.pagefile(None))]
+        else:
+            super()._load()
+
+    def save(self,healthcheckstatus,details=None):
+        with self._lock:
+            try:
+                super().save(healthcheckstatus)
+            finally:
+                if details:
+                    with open(self._pages[-1].detailfile(healthcheckstatus[0]),'w') as f:
+                        f.write(json.dumps(details,cls=serializers.JSONFormater))
+
+            if self._errorpages and healthcheckstatus[2] != "green" and healthcheckstatus[2] in self._servicehealthcheck.healthdetailpersistent:
+                self._errorpages.save(healthcheckstatus)
+
+    def managepages(self):
+        if not super().managepages():
+            return
+        #expired pages have been managed
+        #Try to manage the details
+        now = utils.now()
+        detailexpire = self._historyexpire if self._historyexpire >= self._errorpages._historyexpire else self._errorpages._historyexpire
+        ealiest_nonexpiretime = datetime(now.year,now.month,now.day,tzinfo=settings.TZ)
+        if detailexpire > 1:
+            ealiest_nonexpiretime -= timedelta(days=detailexpire - 1)
+        ealiest_nonexpiretime = ealiest_nonexpiretime.strftime("%Y-%m-%d")
+        if os.path.exists(self.detailsdir):
+            for d in os.listdir(self.detailsdir):
+                if d < ealiest_nonexpiretime:
+                    utils.deletedir(os.path.join(self.detailsdir,d))
+
+class HealthCheckErrorPages(BasicHealthCheckPages):
+    """
+    pages: a list of page data([startdatetime,page file])
+    """
+    _instances = {}
+    _pageindexfilename = "errorpageindex.json"
+    _pagefilename = "errorpage_{}.json"
+    _pagefolder = "errorpages"
+    def __init__(self,servicehealthcheck):
+        super().__init__(servicehealthcheck)
+        self.historyenabled = self._servicehealthcheck.errorhistoryenabled
+        self._historyexpire = self._servicehealthcheck.errorhistoryexpire
+
 
 class ServiceHealthCheck(UserDict):
     selected = False
@@ -559,6 +655,10 @@ class ServiceHealthCheck(UserDict):
     @property
     def prtg(self):
         return self['prtg']
+
+    @property
+    def enabled(self):
+        return self["enabled"]
 
     @property
     def prtgchannels(self):
@@ -639,12 +739,12 @@ class ServiceHealthCheck(UserDict):
     @property
     def healthstatus_prtgdata(self):
         status = self.healthstatus
-        return status[1][4] if status and status[1] and len(status[1]) >= 5 else None
+        return status[1][4] if status and status[1] and len(status[1]) >= 6 else None
 
     @property
     def healthstatus_persistent(self):
         status = self.healthstatus
-        return status[1][-1] if status and status[1] else ""
+        return status[1][-1] if status and status[1] else False
 
     @property
     def healthstatus_checkstart(self):
@@ -665,9 +765,17 @@ class ServiceHealthCheck(UserDict):
         return self.historyexpire > 0
 
     @property
+    def errorhistoryexpire(self):
+        return self["errorhistoryexpire"]
+
+    @property
+    def errorhistoryenabled(self):
+        return self.errorhistoryexpire > 0
+
+    @property
     def healthstatus(self):
         """
-        return healthstatus [next checktime,[starttime,endtime,health status,health status message,health checking persistent?],[prtg data]] 
+        return healthstatus [next checktime,[starttime,endtime,health status,health status message,prtg data,health checking persistent?]] 
         """
         return self.get("healthstatus")
 
@@ -822,9 +930,13 @@ class PRTGMixin(object):
         now = utils.now()
         servicecritical = {}
         for section in self.healthchecksections:
+            if not section.enabled:
+                continue
             if not section.prtgenabled:
                 continue
             for service in section.healthcheckservices:
+                if not service.enabled:
+                    continue
                 if not service.url:
                     continue
                 if not service.prtgenabled:
@@ -994,6 +1106,8 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             "interval":settings.HEARTBEAT,
             "healthdetailpersistent":[],
             "historyexpire":0,
+            "enabled":True,
+            "errorhistoryexpire":0,
             "services":{}
         }
         healthchecksection["services"]["Healthcheck-Heartbeat"] = ServiceHealthCheck(self,{
@@ -1004,9 +1118,11 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             "location":"",
             "healthdetailpersistent":[],
             "historyexpire":0,
+            "errorhistoryexpire":0,
             "timeout":100,
             "offset":0,
             "prtg":None,
+            "enabled":True,
             "checkingtime":None
         })
         sections[healthchecksection["id"]] = SectionHealthCheck(healthchecksection)
@@ -1031,6 +1147,8 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 baseurl = baseurl[:-1]
             if baseurl:
                 config["baseurl"] = baseurl
+
+            config["enabled"] = True if config.get("enabled",True) else False
 
             basecheckingtime = config.get("checkingtime")
             try:
@@ -1104,6 +1222,21 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 errors.append("Section {}({}): The historyexpire({}) is not an integer.{}: {}".format(sectionindex,sectionid,config.get("historyexpire"),ex.__class__.__name__,str(ex)))
                 continue
             config["historyexpire"] = basehistoryexpire
+
+            try:
+                baseerrorhistoryexpire = config.get("errorhistoryexpire")
+                if baseerrorhistoryexpire is not None:
+                    if not isinstance(baseerrorhistoryexpire,int):
+                        baseerrorhistoryexpire = int(str(baseerrorhistoryexpire).strip())
+                else:
+                    baseerrorhistoryexpire = basehistoryexpire
+    
+                if baseerrorhistoryexpire < 0:
+                    baseerrorhistoryexpire = basehistoryexpire
+            except Exception as ex:
+                errors.append("Section {}({}): The errorhistoryexpire({}) is not an integer.{}: {}".format(sectionindex,sectionid,config.get("errorhistoryexpire"),ex.__class__.__name__,str(ex)))
+                continue
+            config["errorhistoryexpire"] = baseerrorhistoryexpire
 
             basehealthdetailpersistent = config.get("healthdetailpersistent")
             if basehealthdetailpersistent:
@@ -1232,6 +1365,8 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 else:
                     method = basemethod
                 service["method"] = method
+
+                service["enabled"] = True if service.get("enabled",True) else False
 
                 try:
                     if "criticalweight" in service:
@@ -1477,26 +1612,30 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key]),
                                     checks.get_message_factory(None),
-                                    prtgdata_map
+                                    prtgdata_map,
+                                    None
                                 ]
                             else:
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key].get("condition")),
                                     checks.get_message_factory(service["healthchecks"][key].get('message')),
-                                    prtgdata_map
+                                    prtgdata_map,
+                                    checks.init_transforms(service["healthchecks"][key].get("transforms")) if service["healthchecks"][key].get("transforms") else None
                                 ]
                         else:
                             if isinstance(service["healthchecks"][key],(list,tuple)):
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key]),
                                     checks.get_message_factory(None),
+                                    None,
                                     None
                                 ]
                             else:
                                 service["healthchecks"][key] = [
                                     checks.init_conds(service["healthchecks"][key].get("condition")),
                                     checks.get_message_factory(service["healthchecks"][key].get('message')),
-                                    None
+                                    None,
+                                    checks.init_transforms(service["healthchecks"][key].get("transforms")) if service["healthchecks"][key].get("transforms") else None
                                 ]
                     except Exception as ex:
                         traceback.print_exc()
@@ -1520,30 +1659,45 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 except Exception as ex:
                     errors.append("Service {0}({1}).{2}({3}): The historyexpire({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("historyexpire")))
                     continue
-                if service.get("historyexpire") > 0:
-                    healthdetailpersistent = service.get("healthdetailpersistent")
-                    if healthdetailpersistent is not None:
-                        if not healthdetailpersistent:
-                            healthdetailpersistent = []
-                        elif isinstance(healthdetailpersistent,str) and healthdetailpersistent == "__all__":
-                            healthdetailpersistent = ["green","yellow","red","error"]
-                        else:
-                            if isinstance(healthdetailpersistent,str):
-                                healthdetailpersistent = [s for s in healthdetailpersistent.split(",")]
-                            data = set()
-                            for s in healthdetailpersistent:
-                                s = s.strip().lower()
-                                if not s:
-                                    continue
-                                if s not in ["green","yellow","red","error"]:
-                                    errors.append("Service {0}({1}).{2}({3}): The health status({4}) in property('healthdetailpersistent') doesn't' support".format(sectionindex,sectionid,serviceindex,serviceid,s))
-                                else:
-                                    data.add(s)
-                            healthdetailpersistent = data
+
+                try:
+                    errorhistoryexpire = service.get("errorhistoryexpire")
+                    if errorhistoryexpire is not None:
+                        if not isinstance(errorhistoryexpire,int):
+                            errorhistoryexpire = int(str(errorhistoryexpire).strip())
+ 
+                        if errorhistoryexpire < 0:
+                            errorhistoryexpire = 0
+                        service["errorhistoryexpire"] = errorhistoryexpire
+                    elif baseerrorhistoryexpire:
+                        service["errorhistoryexpire"] = baseerrorhistoryexpire
                     else:
-                        healthdetailpersistent = basehealthdetailpersistent
+                        service["errorhistoryexpire"] = historyexpire
+                except Exception as ex:
+                    errors.append("Service {0}({1}).{2}({3}): The errorhistoryexpire({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("errorhistoryexpire")))
+                    continue
+
+                healthdetailpersistent = service.get("healthdetailpersistent")
+                if healthdetailpersistent is not None:
+                    if not healthdetailpersistent:
+                        healthdetailpersistent = []
+                    elif isinstance(healthdetailpersistent,str) and healthdetailpersistent == "__all__":
+                        healthdetailpersistent = ["green","yellow","red","error"]
+                    else:
+                        if isinstance(healthdetailpersistent,str):
+                            healthdetailpersistent = [s for s in healthdetailpersistent.split(",")]
+                        data = set()
+                        for s in healthdetailpersistent:
+                            s = s.strip().lower()
+                            if not s:
+                                continue
+                            if s not in ["green","yellow","red","error"]:
+                                errors.append("Service {0}({1}).{2}({3}): The health status({4}) in property('healthdetailpersistent') doesn't' support".format(sectionindex,sectionid,serviceindex,serviceid,s))
+                            else:
+                                data.add(s)
+                        healthdetailpersistent = data
                 else:
-                    healthdetailpersistent = ["green","yellow","red","error"]
+                    healthdetailpersistent = basehealthdetailpersistent
 
                 service["healthdetailpersistent"] = healthdetailpersistent
 
@@ -1566,7 +1720,11 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             self.load_checkingstatus()
 
         for section in self.sections.values():
+            if not section.enabled:
+                continue
             for service in section["services"].values():
+                if not service.enabled:
+                    continue
                 runner.add_task(taskcls(service,*args))
 
     def _schedule_continuous_check(self,taskcls,*args):
@@ -1600,7 +1758,11 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
         self._next_runtime = None
         for section in self.sections.values():
+            if not section.enabled:
+                continue
             for service in section["services"].values():
+                if not service.enabled:
+                    continue
                 if now >= service["healthstatus"][0]:
                     #check this service now
                     logger.debug("{} : Run a task to check the service({}.{}.lastchecktime = {}, next checktime={})  to task runner.".format(self,service.sectionid,service.serviceid,service["healthstatus"][0],service.get_nextchecktime(service["offset"],service["healthstatus"][0],now,today,tomorrow,seconds_in_day)))
@@ -1653,10 +1815,16 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
         for key in ("green","yellow","red","error"):
             if key not in serviceconfig["healthchecks"]:
                 continue
-            checkconditions,get_checkmessage,get_prtgdata = serviceconfig["healthchecks"][key]
+            checkconditions,get_checkmessage,get_prtgdata,transforms = serviceconfig["healthchecks"][key]
             try:
                 if settings.HEALTHCHECK_CONDITION_VERBOSE:
                     messages.clear()
+                #transform the response
+                #transformed response should be compatible with the original response
+                if transforms:
+                    for transform in transforms:
+                        res = transform(res)
+
                 checkresult =  checks.check(res,checkconditions,messages=messages)
                 if checkresult:
                     checkmsg = get_checkmessage(res)

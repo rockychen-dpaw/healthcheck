@@ -419,10 +419,39 @@ async def healthcheckhistory(sectionid,serviceid,pageid):
     else:
         page = None
 
-    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck")
+    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",title="Health Check Histories")
 
-@app.route("/healthcheck/details/<sectionid>/<serviceid>/<pageid>/<starttime>")
-async def healthcheckdetails(sectionid,serviceid,pageid,starttime):
+@app.route("/healthcheck/errorhistory/<sectionid>/<serviceid>",defaults={'pageid': ""})
+@app.route("/healthcheck/errorhistory/<sectionid>/<serviceid>/<pageid>")
+async def healthcheckerrorhistory(sectionid,serviceid,pageid):
+    service = healthcheck.get_service(sectionid,serviceid)
+    if not service:
+        return "The service({}.{}) doesn't exist".format(sectionid,serviceid) ,404
+
+    errorpages = service.healthcheckpages.errorpages
+    if not errorpages:
+        return "The error history of the service({}.{}) is not enabled.".format(sectionid,serviceid) ,404
+
+    pages = errorpages.get_pages()
+
+    if pageid:
+        try:
+            pageid = int(pageid)
+        except:
+            return redirect("/healthcheck/history/{}/{}".format(sectionid,serviceid))
+
+        page = next((p for p in pages if pageid == p.pageid),None)
+        if not page:
+            return redirect("/healthcheck/history/{}/{}".format(sectionid,serviceid))
+    elif pages:
+        page = pages[-1]
+    else:
+        page = None
+
+    return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",title="Health Check Error Histories")
+
+@app.route("/healthcheck/details/<sectionid>/<serviceid>/<starttime>")
+async def healthcheckdetails(sectionid,serviceid,starttime):
     service = healthcheck.get_service(sectionid,serviceid)
     if not service:
         return "The service({}.{}) doesn't exist".format(sectionid,serviceid) ,404
@@ -430,25 +459,7 @@ async def healthcheckdetails(sectionid,serviceid,pageid,starttime):
     starttime = datetime.strptime(starttime,'%Y-%m-%dT%H:%M:%S.%f').replace(tzinfo=settings.TZ)
 
     try:
-        pageid = int(pageid)
-    except:
-        return "Details Not Found",404
-
-    page = None
-    pages = service.healthcheckpages.get_pages()
-    if pageid == 0:
-        for p in reversed(pages):
-            if p.starttime <= starttime:
-                page = p
-                break
-    else:
-        page = next((p for p in pages if pageid == p.pageid),None)
-
-    if not page:
-        return "Details Not Found",404
-
-    try:
-        detailfile = page.detailfile(starttime)
+        detailfile = service.healthcheckpages.detailfile(starttime)
         with open(detailfile) as f:
             data = f.read()
         return data,200,{"Content-Type":"application/json"}

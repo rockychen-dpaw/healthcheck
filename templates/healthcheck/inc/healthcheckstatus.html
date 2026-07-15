@@ -186,7 +186,7 @@ function fetch_healthstatus() {
     `
                       if (datas[i][1][1][4]) {
                           document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details").style.display="inline";
-                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href= "{{baseurl}}/details/"+ datas[i][0][0] + "/" +  datas[i][0][1] + "/0/" + datas[i][1][1][0]
+                          document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href= "{{baseurl}}/details/"+ datas[i][0][0] + "/" +  datas[i][0][1] + "/" + datas[i][1][1][0]
                       } else{
                           document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details").style.display="none";
                           document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href="";
@@ -218,11 +218,13 @@ fetch_healthstatus()
 
 <table class="healthstatusblock">
 {% for section in healthcheck.healthchecksections %}
+{% if section.enabled %}
     {% if section.name %}
     <tr class="sectionnamerow"><td class="sectionnamecolumn"><span class="sectionname">{{section.name}}</span></td></tr>
     {% endif %}
     <tr class="sectionhealthstatusrow"><td class="sectionhealthstatuscolumn">
     {% for service in section.healthcheckservices %}
+    {% if service.enabled %}
     <div class="servicehealthstatus">
         <div class="servicename">{{service.name}}</div>
         <div class="healthstatus" id="{{section.sectionid}}-{{service.serviceid}}-statusname">
@@ -256,7 +258,7 @@ fetch_healthstatus()
             {% endif %}
             | 
             {% if service.healthstatus[1] %}
-            <A target="health check detail" id="{{section.sectionid}}-{{service.serviceid}}-details-link" href="{{baseurl}}/details/{{service.sectionid}}/{{service.serviceid}}/0/{{service.healthstatus[1][0].strftime('%Y-%m-%dT%H:%M:%S.%f')}}"><img src="/static/img/details.svg" class="imgbutton"/></A>
+            <A target="health check detail" id="{{section.sectionid}}-{{service.serviceid}}-details-link" href="{{baseurl}}/details/{{service.sectionid}}/{{service.serviceid}}/{{service.healthstatus[1][0].strftime('%Y-%m-%dT%H:%M:%S.%f')}}"><img src="/static/img/details.svg" class="imgbutton"/></A>
             {% else %}
             <A target="health check detail" id="{{section.sectionid}}-{{service.serviceid}}-details-link" href="#"><img src="/static/img/details.svg" class="imgbutton"/></A>
             {% endif %}
@@ -266,10 +268,17 @@ fetch_healthstatus()
             | <A target="health check history" id="{{section.sectionid}}-{{service.serviceid}}-history-link" href="{{baseurl}}/history/{{service.sectionid}}/{{service.serviceid}}"><img src="/static/img/history.svg" class="imgbutton"/></A>
             </span>
             {% endif %}
+            {% if service.errorhistoryenabled %}
+            <span id="{{section.sectionid}}-{{service.serviceid}}-history">
+            | <A target="health check error history" id="{{section.sectionid}}-{{service.serviceid}}-errorhistory-link" href="{{baseurl}}/errorhistory/{{service.sectionid}}/{{service.serviceid}}"><img src="/static/img/errorhistory.svg" class="imgbutton"/></A>
+            </span>
+            {% endif %}
         </div>
     </div>
+    {% endif %}
     {% endfor %}
     </td></tr>
+{% endif %}
 {% endfor %}
 </table>
 

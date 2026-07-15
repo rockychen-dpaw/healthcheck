@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-      <title>{{service.sectionname}}->{{service.servicename}} Health Check Histories </title>
+      <title>{{service.sectionname}}->{{service.servicename}} {{title}} </title>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="description" content="DBCA Spatial Support System health checks" />
@@ -51,7 +51,7 @@
               <img src="/static/img/{{ item[2] }}.svg" />
               {% endif %}
               {% if item[-1] %}
-              <A target="Health Check Details" href="{{baseurl}}/details/{{service.sectionid}}/{{service.serviceid}}/{{page.pageid}}/{{item[0].strftime('%Y-%m-%dT%H:%M:%S.%f')}}"><img src="/static/img/details.svg" style="padding-left:5px"/></A>
+              <A target="Health Check Details" href="{{baseurl}}/details/{{service.sectionid}}/{{service.serviceid}}/{{item[0].strftime('%Y-%m-%dT%H:%M:%S.%f')}}"><img src="/static/img/details.svg" style="padding-left:5px"/></A>
               {% endif %}
           </td>
           <td >{{item[3]}}</td>

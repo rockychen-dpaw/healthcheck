@@ -7,14 +7,14 @@ from .. import settings
 
 
 from .base import datanotfound
-from . import httpstatus,jsonresponse,textresponse,httpheaders,redirect
+from . import httpstatus,jsonresponse,textresponse,httpheaders,redirect,regexresponse
 from .. import utils
 
 TZ = settings.TZ
 
 logger = logging.getLogger(__name__)
 
-modules = dict([(mod.name,mod) for mod in [httpstatus,jsonresponse,textresponse,httpheaders,redirect] ])
+modules = dict([(mod.name,mod) for mod in [httpstatus,jsonresponse,textresponse,httpheaders,redirect,regexresponse] ])
 
 relativedate_re = re.compile("^\\s*(\\+|\\-)?(\\s*[0-9]+\\s*(days?|hours?|mins?|minutes?|seconds?))+\\s*$")
 flags_re = re.compile("(?P<flag>\\+|\\-)")
@@ -709,4 +709,62 @@ def get_prtg_factory(config):
     else:
         #message pattern
         return _format_message_factory(config,datanotfound_value=None)
+
+def transform_factory(transform):
+    _func = getattr(modules[transform[0]],"transform")
+    def _transform1(res):
+        return _func(res)
+
+    def _transform2(res):
+        return _func(res,*args)
+
+    def _transform3(res):
+        return _func(res,**kwargs)
+
+    def _transform4(res):
+        return _func(res,*args,**kwargs)
+
+    if len(transform) == 1:
+        return _transform1
+    elif len(transform) == 2:
+        if isinstance(transform[1],dict):
+            kwargs = transform[1]
+            return _transform3
+        else:
+            args = transform[1]
+            if not isinstance(args,(list,tuple)):
+                args = [args]
+
+            return _transform2
+
+    else:
+        args = transform[1]
+        if not isinstance(args,(list,tuple)):
+            args = [args]
+        kwargs = transform[2]
+        return _transform4
+
+def init_transforms(transforms):
+    """
+    Transform is a way to add more method to response and tranform the response data
+    """
+    if not transforms:
+        return None
+    if not isinstance(transforms[0],(list,tuple)):
+        #only have one transform, transform it to a list
+        transforms = [transforms]
+
+    transform_funcs = []
+    for transform in transforms:
+        if transform[0] not in modules:
+            raise Exception("Module({1}) in transform({0}) Not Support".format(transform,transform[0]))
+        if not hasattr(modules[transform[0]],"transform"):
+            raise Exception("Module({1}) in transform({0}) doesn't support transform feature".format(transform,transform[0]))
+        transform_funcs.append(transform_factory(transform))
+
+    return transform_funcs
+        
+
+
+
 
