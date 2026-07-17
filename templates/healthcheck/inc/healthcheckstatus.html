@@ -161,6 +161,7 @@ function fetch_healthstatus() {
                       if (datas[i][1] === null) {
                           continue
                       }
+                      console.log("Received Data: " + JSON.stringify(datas[i]))
                       checkstart = datas[i][1][1][0]
                       if (healthstatus[datas[i][0][0]][datas[i][0][1]]["checkstart"] == checkstart) {
                           //the status was already processed before

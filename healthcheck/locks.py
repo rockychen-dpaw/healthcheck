@@ -1,6 +1,8 @@
 import fcntl
 import os
 
+from . import utils
+
 class FileLock(object):
     def __init__(self,file):
         self.file = file
@@ -9,8 +11,13 @@ class FileLock(object):
     def lock(self):
         if self._fd:
             raise Exception("Already acquired the lock({})".format(self.file))
-        self._fd = open(self.file,'w')
-        fcntl.flock(self._fd.fileno(),fcntl.LOCK_EX)
+        try:
+            self._fd = open(self.file,'w')
+            fcntl.flock(self._fd.fileno(),fcntl.LOCK_EX)
+        except FileNotFoundError as ex:
+            utils.makedir(os.path.dirname(self.file))
+            self.lock()
+
 
     def release(self):
         if self._fd:

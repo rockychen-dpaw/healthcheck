@@ -1,9 +1,9 @@
 import sys
+import inspect
 import re
 import hashlib
 import shutil
 import traceback
-import inspect
 import asyncio
 import math
 import json
@@ -96,7 +96,7 @@ class BaseServiceHealthCheckTask(object):
         healthstatus.insert(1,endtime)
         
         healthstatus.append(healthstatus[2] in self.servicehealthcheck.healthdetailpersistent)
-        self.servicehealthcheck["healthstatus"][1] = healthstatus
+        self.servicehealthcheck.healthstatus_healthdata = healthstatus
 
         try:
             await self.servicehealthcheck.save_checkingstatus(healthstatus,res)
@@ -106,9 +106,9 @@ class BaseServiceHealthCheckTask(object):
 
         try:
             if inspect.iscoroutinefunction(self.post_healthcheck):
-                await self.post_healthcheck([[self.servicehealthcheck.sectionid,self.servicehealthcheck.serviceid],[self.servicehealthcheck["healthstatus"][0],healthstatus]])
+                await self.post_healthcheck([[self.servicehealthcheck.sectionid,self.servicehealthcheck.serviceid],[self.servicehealthcheck.healthstatus_nextchecktime,healthstatus]])
             else:
-                self.post_healthcheck([[self.servicehealthcheck.sectionid,self.servicehealthcheck.serviceid],[self.servicehealthcheck["healthstatus"][0],healthstatus]])
+                self.post_healthcheck([[self.servicehealthcheck.sectionid,self.servicehealthcheck.serviceid],[self.servicehealthcheck.healthstatus_nextchecktime,healthstatus]])
         except Exception as ex:
             logger.error("Failed to call 'post_healthcheck'({2}) of service({0}.{1}). {3}: {4}".format(self.servicehealthcheck.sectionid,self.servicehealthcheck.serviceid,healthstatus,ex.__class__.__name__,str(ex)))
 
@@ -156,6 +156,11 @@ class HealthCheckStatus(object):
         return checkstatus
 
 class HealthCheckPage(object):
+    _last_greenhealthcheck = None
+    _last_yellowhealthcheck = None
+    _last_redhealthcheck = None
+    _last_errorhealthcheck = None
+
     def __init__(self,healthcheckpages,starttime,filepath):
         self._healthcheckpages = healthcheckpages
         self._starttime = starttime
@@ -183,6 +188,30 @@ class HealthCheckPage(object):
             self._load()
         return self._last_healthcheck
  
+    @property
+    def last_greenhealthcheck(self):
+        if self._size is None:
+            self._load()
+        return self._last_greenhealthcheck
+
+    @property
+    def last_yellowhealthcheck(self):
+        if self._size is None:
+            self._load()
+        return self._last_yellowhealthcheck
+
+    @property
+    def last_redhealthcheck(self):
+        if self._size is None:
+            self._load()
+        return self._last_redhealthcheck
+
+    @property
+    def last_errorhealthcheck(self):
+        if self._size is None:
+            self._load()
+        return self._last_errorhealthcheck
+
     def delete(self):
         utils.remove_file(self._filepath)
 
@@ -221,18 +250,23 @@ class HealthCheckPage(object):
             raise Exception("The file path({}) is not a file".format(self._filepath))
         else:
             size = 0
-            last_healthcheck = None
             with open(self._filepath,'r') as f:
                 while True:
                     data = f.readline()
                     if data == "":
                         break
+                    size += 1
+                    self._last_healthcheck = HealthCheckStatus.deserialize(data)
+                    if self._last_healthcheck[2] == "green":
+                        self._last_greenhealthcheck = self._last_healthcheck
+                    elif self._last_healthcheck[2] == "yellow":
+                        self._last_yellowhealthcheck = self._last_healthcheck
+                    elif self._last_healthcheck[2] == "red":
+                        self._last_redhealthcheck = self._last_healthcheck
                     else:
-                        size += 1
-                        last_healthcheck = data
+                        self._last_errorhealthcheck = self._last_healthcheck
 
             self._size = size
-            self._last_healthcheck = HealthCheckStatus.deserialize(last_healthcheck)
         
 
     def save(self,healthcheckstatus):
@@ -461,22 +495,33 @@ class BasicHealthCheckPages(object):
         else:
             self._filesize = 0
 
+    def reset(self):
+        """
+        Reset the pages to reload it
+        """
+        self._filesize = None
+        self._pages = None
+
     def get_pages(self):
         """
         Called by web app; should reload if if it was changed by healthcheck server
         """
-        if self._filesize is None or (os.path.exists(self.pageindexfile) and self._filesize != os.path.getsize(self.pageindexfile)):
+        if self._pages is None or self._filesize is None or (os.path.exists(self.pageindexfile) and self._filesize != os.path.getsize(self.pageindexfile)):
             self._load()
         return self._pages
 
-    def save(self,healthcheckstatus):
+    def save_healthcheckstatus(self,healthcheckstatus):
+        """
+        Return True if expired pages have been cleaned; otherwise return False
+        """
         if self._pages is None:
             self._load()
 
         try:
+            cleaned = False
             if self._pages:
                 if self._pages[-1].save(healthcheckstatus):
-                    return
+                    return False
 
             newpage = HealthCheckPage(self,healthcheckstatus[0],self.pagefile(healthcheckstatus[0]))
 
@@ -487,8 +532,15 @@ class BasicHealthCheckPages(object):
             self._pages.append(newpage)
 
             newpage.save(healthcheckstatus)
+        except FileNotFoundError as ex:
+            #file doesn't exist. maybe delete from disk directly.
+            #reload the pages and do it again
+            self.reset()
+            self.save_healthcheckstatus(healthcheckstatus)
         finally:
-            self.managepages()
+            cleaned = self.managepages()
+
+        return cleaned
 
 
     def managepages(self):
@@ -554,6 +606,74 @@ class HealthCheckPages(BasicHealthCheckPages):
     def errorpages(self):
         return self._errorpages
 
+    @property
+    def last_greenhealthcheck(self):
+        """
+        Called by healthcheck server
+        because _pages are loaded and catched in memory and only healthcheck server can change this file, no need to check whether the file was changed by other process after loading.
+        """
+        if self._pages is None:
+            self._load()
+        if self._pages:
+            for i in range(len(self._pages) - 1,-1,-1):
+                data = self._pages[i].last_greenhealthcheck
+                if data:
+                    return data
+            return None
+        else:
+            return None
+
+    @property
+    def last_yellowhealthcheck(self):
+        """
+        Called by healthcheck server
+        because _pages are loaded and catched in memory and only healthcheck server can change this file, no need to check whether the file was changed by other process after loading.
+        """
+        if self._pages is None:
+            self._load()
+        if self._pages:
+            for i in range(len(self._pages) - 1,-1,-1):
+                data = self._pages[i].last_yellowhealthcheck
+                if data:
+                    return data
+            return None
+        else:
+            return None
+
+    @property
+    def last_redhealthcheck(self):
+        """
+        Called by healthcheck server
+        because _pages are loaded and catched in memory and only healthcheck server can change this file, no need to check whether the file was changed by other process after loading.
+        """
+        if self._pages is None:
+            self._load()
+        if self._pages:
+            for i in range(len(self._pages) - 1,-1,-1):
+                data = self._pages[i].last_redhealthcheck
+                if data:
+                    return data
+            return None
+        else:
+            return None
+
+    @property
+    def last_errorhealthcheck(self):
+        """
+        Called by healthcheck server
+        because _pages are loaded and catched in memory and only healthcheck server can change this file, no need to check whether the file was changed by other process after loading.
+        """
+        if self._pages is None:
+            self._load()
+        if self._pages:
+            for i in range(len(self._pages) - 1,-1,-1):
+                data = self._pages[i].last_errorhealthcheck
+                if data:
+                    return data
+            return None
+        else:
+            return None
+
     def pagefile(self,starttime):
         if self.historyenabled:
             return super().pagefile(starttime)
@@ -581,32 +701,36 @@ class HealthCheckPages(BasicHealthCheckPages):
             super()._load()
 
     def save(self,healthcheckstatus,details=None):
+        cleaned = False
         with self._lock:
             try:
-                super().save(healthcheckstatus)
+                cleaned = super().save_healthcheckstatus(healthcheckstatus)
             finally:
                 if details:
                     with open(self._pages[-1].detailfile(healthcheckstatus[0]),'w') as f:
                         f.write(json.dumps(details,cls=serializers.JSONFormater))
 
             if self._errorpages and healthcheckstatus[2] != "green" and healthcheckstatus[2] in self._servicehealthcheck.healthdetailpersistent:
-                self._errorpages.save(healthcheckstatus)
-
-    def managepages(self):
-        if not super().managepages():
-            return
-        #expired pages have been managed
-        #Try to manage the details
-        now = utils.now()
-        detailexpire = self._historyexpire if self._historyexpire >= self._errorpages._historyexpire else self._errorpages._historyexpire
-        ealiest_nonexpiretime = datetime(now.year,now.month,now.day,tzinfo=settings.TZ)
-        if detailexpire > 1:
-            ealiest_nonexpiretime -= timedelta(days=detailexpire - 1)
-        ealiest_nonexpiretime = ealiest_nonexpiretime.strftime("%Y-%m-%d")
-        if os.path.exists(self.detailsdir):
-            for d in os.listdir(self.detailsdir):
-                if d < ealiest_nonexpiretime:
-                    utils.deletedir(os.path.join(self.detailsdir,d))
+                cleaned = cleaned or self._errorpages.save_healthcheckstatus(healthcheckstatus)
+            
+            if cleaned:
+                #a history clean action was performed. try to clean the expired details
+                #Find the earliest starttime of the details
+                starttime = None
+                if self._historyexpire > 0:
+                    starttime = self._pages[0]._starttime
+                if self._errorpages._historyexpire > 0 and self._errorpages._pages:
+                    if not starttime:
+                        starttime = self._errorpages._pages[0]._starttime
+                    elif starttime > self._errorpages._pages[0]._starttime:
+                        starttime = self._errorpages._pages[0]._starttime
+                if starttime:
+                    #find the start time, clean all the details before that day
+                    ealiest_nonexpiretime = starttime.strftime("%Y-%m-%d")
+                    if os.path.exists(self.detailsdir):
+                        for d in os.listdir(self.detailsdir):
+                            if d < ealiest_nonexpiretime:
+                                utils.deletedir(os.path.join(self.detailsdir,d))
 
 class HealthCheckErrorPages(BasicHealthCheckPages):
     """
@@ -624,6 +748,7 @@ class HealthCheckErrorPages(BasicHealthCheckPages):
 
 class ServiceHealthCheck(UserDict):
     selected = False
+
     def __init__(self,healthcheck,data):
         super().__init__(data)
         self.healthcheck = healthcheck
@@ -631,6 +756,50 @@ class ServiceHealthCheck(UserDict):
 
     def __str__(self):
         return "{}.{}.{}".format(self.healthcheck,self.sectionid,self.serviceid)
+
+    _last_greenhealthcheck = "__NULL__"
+    @property
+    def last_greenhealthcheck(self):
+        if self._last_greenhealthcheck == "__NULL__": 
+            self._last_greenhealthcheck = self.healthcheckpages.last_greenhealthcheck
+        return self._last_greenhealthcheck
+
+    @last_greenhealthcheck.setter
+    def last_greenhealthcheck(self,val):
+        self._last_greenhealthcheck = val
+
+    _last_yellowhealthcheck = "__NULL__"
+    @property
+    def last_yellowhealthcheck(self):
+        if self._last_yellowhealthcheck == "__NULL__": 
+            self._last_yellowhealthcheck = self.healthcheckpages.last_yellowhealthcheck
+        return self._last_yellowhealthcheck
+
+    @last_yellowhealthcheck.setter
+    def last_yellowhealthcheck(self,val):
+        self._last_yellowhealthcheck = val
+
+    _last_redhealthcheck = "__NULL__"
+    @property
+    def last_redhealthcheck(self):
+        if self._last_redhealthcheck == "__NULL__": 
+            self._last_redhealthcheck = self.healthcheckpages.last_redhealthcheck
+        return self._last_redhealthcheck
+
+    @last_redhealthcheck.setter
+    def last_redhealthcheck(self,val):
+        self._last_redhealthcheck = val
+
+    _last_errorhealthcheck = "__NULL__"
+    @property
+    def last_errorhealthcheck(self):
+        if self._last_errorhealthcheck == "__NULL__": 
+            self._last_errorhealthcheck = self.healthcheckpages.last_errorhealthcheck
+        return self._last_errorhealthcheck
+
+    @last_errorhealthcheck.setter
+    def last_errorhealthcheck(self,val):
+        self._last_errorhealthcheck = val
 
     @property
     def sectionname(self):
@@ -722,38 +891,75 @@ class ServiceHealthCheck(UserDict):
         return self.get("data")
 
     @property
+    def healthstatus(self):
+        """
+        return healthstatus [next checktime,[starttime,endtime,health status,health status message,prtg data,health checking persistent?]] 
+        """
+        return self.get("healthstatus")
+
+    @healthstatus.setter
+    def healthstatus(self,val):
+        self["healthstatus"] = val
+
+    @property
+    def healthstatus_healthdata(self):
+        status = self["healthstatus"]
+        return status[1] if status else None
+
+    @healthstatus_healthdata.setter
+    def healthstatus_healthdata(self,val):
+        if val[2] == "green":
+            self.last_greenhealthcheck = val
+        elif val[2] == "yellow":
+            self.last_yellowhealthcheck = val
+        elif val[2] == "red":
+            self.last_redhealthcheck = val
+        else:
+            self.last_errorhealthcheck = val
+        self["healthstatus"][1] = val
+
+    @property
+    def healthstatus_nextchecktime(self):
+        status = self["healthstatus"]
+        return status[0] if status else None
+
+    @healthstatus_nextchecktime.setter
+    def healthstatus_nextchecktime(self,val):
+        self["healthstatus"][0] = val
+
+    @property
     def healthstatus_nextcheck(self):
-        status = self.healthstatus
+        status = self["healthstatus"]
         return status[0].strftime("%Y-%m-%dT%H:%M:%S") if status else ""
 
     @property
     def healthstatus_name(self):
-        status = self.healthstatus
+        status = self["healthstatus"]
         return status[1][2] if status and status[1] else ""
 
     @property
     def healthstatus_info(self):
-        status = self.healthstatus
+        status = self["healthstatus"]
         return status[1][3] if status and status[1] else ""
 
     @property
     def healthstatus_prtgdata(self):
-        status = self.healthstatus
+        status = self["healthstatus"]
         return status[1][4] if status and status[1] and len(status[1]) >= 6 else None
 
     @property
     def healthstatus_persistent(self):
-        status = self.healthstatus
+        status = self["healthstatus"]
         return status[1][-1] if status and status[1] else False
 
     @property
     def healthstatus_checkstart(self):
-        status = self.healthstatus
+        status = self["healthstatus"]
         return status[1][0].strftime("%Y-%m-%dT%H:%M:%S.%f") if status and status[1] else ""
 
     @property
     def healthstatus_checkend(self):
-        status = self.healthstatus
+        status = self["healthstatus"]
         return status[1][1].strftime("%Y-%m-%dT%H:%M:%S.%f") if status and status[1] else ""
 
     @property
@@ -771,17 +977,6 @@ class ServiceHealthCheck(UserDict):
     @property
     def errorhistoryenabled(self):
         return self.errorhistoryexpire > 0
-
-    @property
-    def healthstatus(self):
-        """
-        return healthstatus [next checktime,[starttime,endtime,health status,health status message,prtg data,health checking persistent?]] 
-        """
-        return self.get("healthstatus")
-
-    @healthstatus.setter
-    def healthstatus(self,val):
-        self["healthstatus"] = val
 
     @property
     def healthdetailpersistent(self):
@@ -886,7 +1081,7 @@ class ServiceHealthCheck(UserDict):
         last_healthcheck = self.healthcheckpages.last_healthcheck
 
         next_checktime = self.get_nextchecktime(self["offset"],last_healthcheck[0] if last_healthcheck else None)
-        self["healthstatus"] = [next_checktime,last_healthcheck] 
+        self.healthstatus = [next_checktime,last_healthcheck] 
 
 
 class JsonStatusMixin(object):
@@ -898,7 +1093,7 @@ class JsonStatusMixin(object):
             data[section.sectionid] = sectiondata
             for service in section.healthcheckservices:
                 if details:
-                    if service["healthstatus"][0] + timedelta(milliseconds=service["timeout"]) < now:
+                    if service.healthstatus_nextchecktime + timedelta(milliseconds=service["timeout"]) < now:
                         sectiondata[service.serviceid] = {
                             'status': "error",
                             'starttime': "",
@@ -915,7 +1110,7 @@ class JsonStatusMixin(object):
                             'nextcheck':service.healthstatus_nextcheck
                         }
                 else:
-                    if service["healthstatus"][0] + timedelta(milliseconds=service["timeout"]) < now:
+                    if service.healthstatus_nextchecktime + timedelta(milliseconds=service["timeout"]) < now:
                         #the current healthstatus is outdated
                         sectiondata[service.serviceid] = "error"
                     else:
@@ -942,7 +1137,7 @@ class PRTGMixin(object):
                 if not service.prtgenabled:
                     continue
 
-                if service["healthstatus"][0] + timedelta(milliseconds=service["timeout"]) < now:
+                if service.healthstatus_nextchecktime + timedelta(milliseconds=service["timeout"]) < now:
                     #the current healthstatus is outdated
                     prtgdata = None
                     healthstatus_name = "error"
@@ -1044,6 +1239,11 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                             service.healthstatus[0] = next_checktime
                 else:
                     service.healthstatus = [next_checktime,None] 
+                if existing_service:
+                    service.last_greenhealthcheck = existing_service.last_greenhealthcheck
+                    service.last_yellowhealthcheck = existing_service.last_yellowhealthcheck
+                    service.last_redhealthcheck = existing_service.last_redhealthcheck
+                    service.last_errorhealthcheck = existing_service.last_errorhealthcheck
 
         return True
 
@@ -1133,6 +1333,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
         sectionindex = 0
         for config in configs:
             sectionindex += 1
+            config = SectionHealthCheck(config)
             sectionid = config.get("id")
             if not sectionid:
                 errors.append("Section {}: Missing property(id)".format(sectionindex))
@@ -1141,6 +1342,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             if not config.get("services"):
                 errors.append("Section {}({}): No services are configured".format(sectionindex,sectionid))
                 continue
+
             baseurl = config.get("baseurl")
             baseurl = baseurl.strip() if baseurl else None
             if baseurl and baseurl.endswith("/"):
@@ -1488,6 +1690,65 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 service["timeout"] = timeout
                 service["request_timeout"] = timeout / 1000.0
 
+                try:
+                    historyexpire = service.get("historyexpire")
+                    if historyexpire is not None:
+                        if not isinstance(historyexpire,int):
+                            historyexpire = int(str(historyexpire).strip())
+ 
+                        if historyexpire < 0:
+                            historyexpire = 0
+                        service["historyexpire"] = historyexpire
+                    else:
+                        service["historyexpire"] = basehistoryexpire
+                except Exception as ex:
+                    errors.append("Service {0}({1}).{2}({3}): The historyexpire({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("historyexpire")))
+                    continue
+
+                try:
+                    errorhistoryexpire = service.get("errorhistoryexpire")
+                    if errorhistoryexpire is not None:
+                        if not isinstance(errorhistoryexpire,int):
+                            errorhistoryexpire = int(str(errorhistoryexpire).strip())
+ 
+                        if errorhistoryexpire < 0:
+                            errorhistoryexpire = 0
+                        service["errorhistoryexpire"] = errorhistoryexpire
+                    elif baseerrorhistoryexpire:
+                        service["errorhistoryexpire"] = baseerrorhistoryexpire
+                    else:
+                        service["errorhistoryexpire"] = historyexpire
+                except Exception as ex:
+                    errors.append("Service {0}({1}).{2}({3}): The errorhistoryexpire({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("errorhistoryexpire")))
+                    continue
+
+                healthdetailpersistent = service.get("healthdetailpersistent")
+                if healthdetailpersistent is not None:
+                    if not healthdetailpersistent:
+                        healthdetailpersistent = []
+                    elif isinstance(healthdetailpersistent,str) and healthdetailpersistent == "__all__":
+                        healthdetailpersistent = ["green","yellow","red","error"]
+                    else:
+                        if isinstance(healthdetailpersistent,str):
+                            healthdetailpersistent = [s for s in healthdetailpersistent.split(",")]
+                        data = set()
+                        for s in healthdetailpersistent:
+                            s = s.strip().lower()
+                            if not s:
+                                continue
+                            if s not in ["green","yellow","red","error"]:
+                                errors.append("Service {0}({1}).{2}({3}): The health status({4}) in property('healthdetailpersistent') doesn't' support".format(sectionindex,sectionid,serviceindex,serviceid,s))
+                            else:
+                                data.add(s)
+                        healthdetailpersistent = data
+                else:
+                    healthdetailpersistent = basehealthdetailpersistent
+
+                service["healthdetailpersistent"] = healthdetailpersistent
+
+                service["section"] = config
+                service = ServiceHealthCheck(self,service)
+
                 #merge the sector's prtg config into service's prtg config
                 if service.get("prtg"):
                     if not isinstance(service["prtg"],list):
@@ -1566,7 +1827,8 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         computed_columns = {}
                         for k,v in prtgconfig.items():
                             if callable(v):
-                                computed_columns[k] = v
+                                #turn the two arguments to one argument is required
+                                computed_columns[k] = checks.lambda_func_fatctory(service,v)
 
                         for k in computed_columns.keys():
                             del prtgconfig[k]
@@ -1579,7 +1841,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if not service["healthchecks"]:
                     errors.append("Service {0}({1}).{2}({3}): Missing healthcheck configuration".format(sectionindex,sectionid,serviceindex,serviceid))
                     continue
-    
+
                 for key in list(service["healthchecks"].keys()):
                     try:
                         if key not in ("green","yellow","red","error"):
@@ -1604,36 +1866,36 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
                             for channelid,prtgconfig in service["prtg"].items():
                                 if channelid in prtgdata_config:
-                                    prtgdata_map[channelid] = checks.get_prtg_factory(prtgdata_config[channelid]) 
+                                    prtgdata_map[channelid] = checks.get_prtg_factory(service,prtgdata_config[channelid]) 
                                 elif key in prtgconfig[1]:
-                                    prtgdata_map[channelid] = checks.get_prtg_factory(prtgconfig[1][key]) 
+                                    prtgdata_map[channelid] = checks.get_prtg_factory(service,prtgconfig[1][key]) 
 
                             if isinstance(service["healthchecks"][key],(list,tuple)):
                                 service["healthchecks"][key] = [
-                                    checks.init_conds(service["healthchecks"][key]),
-                                    checks.get_message_factory(None),
+                                    checks.init_conds(service,service["healthchecks"][key]),
+                                    checks.get_message_factory(service,None),
                                     prtgdata_map,
                                     None
                                 ]
                             else:
                                 service["healthchecks"][key] = [
-                                    checks.init_conds(service["healthchecks"][key].get("condition")),
-                                    checks.get_message_factory(service["healthchecks"][key].get('message')),
+                                    checks.init_conds(service,service["healthchecks"][key].get("condition")),
+                                    checks.get_message_factory(service,service["healthchecks"][key].get('message')),
                                     prtgdata_map,
                                     checks.init_transforms(service["healthchecks"][key].get("transforms")) if service["healthchecks"][key].get("transforms") else None
                                 ]
                         else:
                             if isinstance(service["healthchecks"][key],(list,tuple)):
                                 service["healthchecks"][key] = [
-                                    checks.init_conds(service["healthchecks"][key]),
-                                    checks.get_message_factory(None),
+                                    checks.init_conds(service,service["healthchecks"][key]),
+                                    checks.get_message_factory(service,None),
                                     None,
                                     None
                                 ]
                             else:
                                 service["healthchecks"][key] = [
-                                    checks.init_conds(service["healthchecks"][key].get("condition")),
-                                    checks.get_message_factory(service["healthchecks"][key].get('message')),
+                                    checks.init_conds(service,service["healthchecks"][key].get("condition")),
+                                    checks.get_message_factory(service,service["healthchecks"][key].get('message')),
                                     None,
                                     checks.init_transforms(service["healthchecks"][key].get("transforms")) if service["healthchecks"][key].get("transforms") else None
                                 ]
@@ -1645,71 +1907,14 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if not service["healthchecks"]:
                     continue
     
-                try:
-                    historyexpire = service.get("historyexpire")
-                    if historyexpire is not None:
-                        if not isinstance(historyexpire,int):
-                            historyexpire = int(str(historyexpire).strip())
- 
-                        if historyexpire < 0:
-                            historyexpire = 0
-                        service["historyexpire"] = historyexpire
-                    else:
-                        service["historyexpire"] = basehistoryexpire
-                except Exception as ex:
-                    errors.append("Service {0}({1}).{2}({3}): The historyexpire({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("historyexpire")))
-                    continue
 
-                try:
-                    errorhistoryexpire = service.get("errorhistoryexpire")
-                    if errorhistoryexpire is not None:
-                        if not isinstance(errorhistoryexpire,int):
-                            errorhistoryexpire = int(str(errorhistoryexpire).strip())
- 
-                        if errorhistoryexpire < 0:
-                            errorhistoryexpire = 0
-                        service["errorhistoryexpire"] = errorhistoryexpire
-                    elif baseerrorhistoryexpire:
-                        service["errorhistoryexpire"] = baseerrorhistoryexpire
-                    else:
-                        service["errorhistoryexpire"] = historyexpire
-                except Exception as ex:
-                    errors.append("Service {0}({1}).{2}({3}): The errorhistoryexpire({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("errorhistoryexpire")))
-                    continue
-
-                healthdetailpersistent = service.get("healthdetailpersistent")
-                if healthdetailpersistent is not None:
-                    if not healthdetailpersistent:
-                        healthdetailpersistent = []
-                    elif isinstance(healthdetailpersistent,str) and healthdetailpersistent == "__all__":
-                        healthdetailpersistent = ["green","yellow","red","error"]
-                    else:
-                        if isinstance(healthdetailpersistent,str):
-                            healthdetailpersistent = [s for s in healthdetailpersistent.split(",")]
-                        data = set()
-                        for s in healthdetailpersistent:
-                            s = s.strip().lower()
-                            if not s:
-                                continue
-                            if s not in ["green","yellow","red","error"]:
-                                errors.append("Service {0}({1}).{2}({3}): The health status({4}) in property('healthdetailpersistent') doesn't' support".format(sectionindex,sectionid,serviceindex,serviceid,s))
-                            else:
-                                data.add(s)
-                        healthdetailpersistent = data
-                else:
-                    healthdetailpersistent = basehealthdetailpersistent
-
-                service["healthdetailpersistent"] = healthdetailpersistent
-
-                service["section"] = config
-
-                services[serviceid] = ServiceHealthCheck(self,service)
+                services[serviceid] = service
 
             if not services:
                 continue
 
             config["services"] = services
-            sections[sectionid] = SectionHealthCheck(config)
+            sections[sectionid] = config
             
         return (sections,errors)
 
@@ -1763,15 +1968,15 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
             for service in section["services"].values():
                 if not service.enabled:
                     continue
-                if now >= service["healthstatus"][0]:
+                if now >= service.healthstatus_nextchecktime:
                     #check this service now
-                    logger.debug("{} : Run a task to check the service({}.{}.lastchecktime = {}, next checktime={})  to task runner.".format(self,service.sectionid,service.serviceid,service["healthstatus"][0],service.get_nextchecktime(service["offset"],service["healthstatus"][0],now,today,tomorrow,seconds_in_day)))
+                    logger.debug("{} : Run a task to check the service({}.{}.lastchecktime = {}, next checktime={})  to task runner.".format(self,service.sectionid,service.serviceid,service.healthstatus_nextcheck,service.get_nextchecktime(service["offset"],service.healthstatus_nextchecktime,now,today,tomorrow,seconds_in_day)))
                     task = taskcls(service,*args)
                     asyncio.create_task(task.run())
-                    next_checktime = service.get_nextchecktime(service["offset"],service["healthstatus"][0],now,today,tomorrow,seconds_in_day)
-                    service["healthstatus"][0] = next_checktime
+                    next_checktime = service.get_nextchecktime(service["offset"],service.healthstatus_nextchecktime,now,today,tomorrow,seconds_in_day)
+                    service.healthstatus_nextchecktime = next_checktime
                 else:
-                    next_checktime = service["healthstatus"][0]
+                    next_checktime = service.healthstatus_nextchecktime
                 if not self._next_runtime or self._next_runtime > next_checktime:
                     self._next_runtime = next_checktime
 

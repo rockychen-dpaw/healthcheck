@@ -419,6 +419,11 @@ async def healthcheckhistory(sectionid,serviceid,pageid):
     else:
         page = None
 
+    if page and not os.path.exists(page.filepath):
+        #file doesn't exit, maybe deleted from disk. reload the pages 
+        service.healthcheckpages.reset()
+        return redirect("/healthcheck/history/{}/{}".format(sectionid,serviceid))
+
     return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",history="history",title="Health Check Histories")
 
 @app.route("/healthcheck/errorhistory/<sectionid>/<serviceid>",defaults={'pageid': ""})
@@ -447,6 +452,11 @@ async def healthcheckerrorhistory(sectionid,serviceid,pageid):
         page = pages[-1]
     else:
         page = None
+
+    if page and not os.path.exists(page.filepath):
+        #file doesn't exit, maybe deleted from disk. reload the pages 
+        service.healthcheckpages.reset()
+        return redirect("/healthcheck/errorhistory/{}/{}".format(sectionid,serviceid))
 
     return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck",history="errorhistory",title="Health Check Error Histories")
 
@@ -614,6 +624,11 @@ async def editinghealthcheckhistory(sectionid,serviceid,pageid):
     else:
         page = None
 
+    if page and not os.path.exists(page.filepath):
+        #file doesn't exit, maybe deleted from disk. reload the pages 
+        service.healthcheckpages.reset()
+        return redirect("/healthcheck/config/history/{}/{}".format(sectionid,serviceid))
+
     return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config",history="history")
 
 @app.route("/healthcheck/config/errorhistory/<sectionid>/<serviceid>",defaults={'pageid': ""})
@@ -644,6 +659,11 @@ async def editinghealthcheckerrorhistory(sectionid,serviceid,pageid):
         page = pages[-1]
     else:
         page = None
+
+    if page and not os.path.exists(page.filepath):
+        #file doesn't exit, maybe deleted from disk. reload the pages 
+        service.healthcheckpages.reset()
+        return redirect("/healthcheck/config/errorhistory/{}/{}".format(sectionid,serviceid))
 
     return await render_template("healthcheck/healthcheckhistory.html",service=service,pages=reversed(pages),page=page,baseurl="/healthcheck/config",history="errorhistory")
 
