@@ -1,4 +1,5 @@
 import traceback
+import inspect
 import logging
 import os
 import re
@@ -7,14 +8,14 @@ from .. import settings
 
 
 from .base import datanotfound
-from . import httpstatus,jsonresponse,textresponse,httpheaders,redirect
+from . import httpstatus,jsonresponse,textresponse,httpheaders,redirect,regexresponse
 from .. import utils
 
 TZ = settings.TZ
 
 logger = logging.getLogger(__name__)
 
-modules = dict([(mod.name,mod) for mod in [httpstatus,jsonresponse,textresponse,httpheaders,redirect] ])
+modules = dict([(mod.name,mod) for mod in [httpstatus,jsonresponse,textresponse,httpheaders,redirect,regexresponse] ])
 
 relativedate_re = re.compile("^\\s*(\\+|\\-)?(\\s*[0-9]+\\s*(days?|hours?|mins?|minutes?|seconds?))+\\s*$")
 flags_re = re.compile("(?P<flag>\\+|\\-)")
@@ -22,6 +23,22 @@ days_re = re.compile("(?P<days>[0-9]+)\\s*days?")
 hours_re = re.compile("(?P<hours>[0-9]+)\\s*hours?")
 minutes_re = re.compile("(?P<minutes>[0-9]+)\\s*(min|minute)s?")
 seconds_re = re.compile("(?P<seconds>[0-9]+)\\s*seconds?")
+
+
+def lambda_func_fatctory(service,func):
+    #normally the func to get a data from response has two versions
+    #1. one argument: data 
+    #2. two arguments: service object and data 
+    #turn the two arguments version to one argument version
+    def _func(data):
+        return func(service,data)
+
+    sig = inspect.signature(func)
+    if len(sig.parameters) == 2:
+        #have two arguments, turn it to one arugment
+        return _func
+    else:
+        return func
 
 
 def parse_checkingtime(checkingtime):
@@ -243,7 +260,7 @@ def _init_key(key):
 
     return keys
 
-def _init_cond(cond):
+def _init_cond(service,cond):
     """
     cond: a single condition ["httpstatus",200]
     """
@@ -257,22 +274,24 @@ def _init_cond(cond):
     if cond[1] in ("and","or"):
         if len(cond) < 3:
             raise Exception("The condition({}) is invalid.logical operator({}) should have at least one logical expression.{}".format(cond,con[1],conds_help))
+        #convert the condition from [module,and|or,val1,val2...] to [and|or,[module,key,conditon,expectedvalue],...]
         newcond=[cond[1]]
         for i in range(2,len(cond),1):
             if isinstance(cond[i],(list,tuple)):
-                newcond.append(_init_cond([cond[0],*cond[i]]))
+                newcond.append(_init_cond(service,[cond[0],*cond[i]]))
             else:
-                newcond.append(_init_cond([cond[0],"","==",cond[i]]))
+                newcond.append(_init_cond(service,[cond[0],"","==",cond[i]]))
         return newcond
 
     elif cond[1] == "not":
         if len(cond) != 3:
             raise Exception("The condition({}) is invalid.logical operator({}) only accept one logical expression.{}".format(cond,con[1],conds_help))
         newcond=[cond[1]]
+        #convert the condition from [module,not,val1] to [not,[module,key,conditon,expectedvalue]]
         if isinstance(cond[2],(list,tuple)):
-            newcond.append(_init_cond([cond[0],*cond[2]]))
+            newcond.append(_init_cond(service,[cond[0],*cond[2]]))
         else:
-            newcond.append(_init_cond([cond[0],"","==",cond[2]]))
+            newcond.append(_init_cond(service,[cond[0],"","==",cond[2]]))
         return newcond
     elif len(cond) == 5:
         pass
@@ -347,7 +366,7 @@ def _init_cond(cond):
     #validate the operands
     if cond[2] == "lambda":
         try:
-            cond[3] = eval(cond[3])
+            cond[3] = lambda_func_fatctory(service,eval(cond[3]))
         except Exception as ex:
             raise Exception("The lambda operation in conditon({}) is invalid.{}:{}".format(cond,ex.__class__.__name__,str(ex)))
     elif operators[cond[2]][0] == 0:
@@ -376,7 +395,7 @@ def _init_cond(cond):
 
 
     if isinstance(cond[3],str) and cond[3].strip().startswith("lambda"):
-        cond[3] =  eval(cond[3].strip())
+        cond[3] =  lambda_func_fatctory(service,eval(cond[3].strip()))
     else:
         dt = None
         if cond[4]:
@@ -434,7 +453,7 @@ A valid condition have the following formats:
     ['or',[],[],...]: logical or
     ['not',[]]: logical not
 """
-def init_conds(conds):
+def init_conds(service,conds):
     if not conds or not isinstance(conds,(list,tuple)):
         #no condition, always True
         return []
@@ -450,17 +469,17 @@ def init_conds(conds):
         elif any(not isinstance(cond,(list,tuple)) for cond in conds[1:]):
             raise Exception("The condition({}) is invalid, The logical expressions of the logical operator({}) must be type list or tuple).{}".format(conds,conds_help))
         for i in range(1,len(conds),1):
-            conds[i] = init_conds(conds[i])
+            conds[i] = init_conds(service,conds[i])
         return conds
     elif conds[0] == "not":
         if len(conds) != 2:
             raise Exception("The condition({}) is invalid, the logical operator({}) only accept one logical expression.{}".format(conds,conds[0],conds_help))
         elif not isinstance(conds[1],(list,tuple)):
             raise Exception("The condition({}) is invalid, The logical expression of the logical operator({}) must be type list or tuple).{}".format(conds,conds_help))
-        conds[1] = init_conds(conds[1])
+        conds[1] = init_conds(service,conds[1])
         return conds
     else:
-        return _init_cond(conds)
+        return _init_cond(service,conds)
 
 operators = {
     "exists":(0,True), #(the number of operands, True means the individual operand only accept primitive data; false means the individual operand can be primitive data or compound data) 
@@ -610,7 +629,7 @@ get_message_help = """Only support the following retrieving message configuratio
 4. [data category, keys]
 5. [data category, keys, lambda expression]
 6. [pattern,[],...]"""
-def _get_value_factory(config,datanotfound_value="N/A"):
+def _get_value_factory(service,config,datanotfound_value="N/A"):
     f_get_value = getattr(modules[config[0]],"get_value")
     _f = None
     if len(config) < 2:
@@ -618,7 +637,7 @@ def _get_value_factory(config,datanotfound_value="N/A"):
         params = None
     elif len(config) == 2:
         if config[1].startswith("lambda"):
-            _f = eval(config[1])
+            _f = lambda_func_fatctory(service,eval(config[1]))
             params = None
         else:
             _f = None
@@ -626,7 +645,7 @@ def _get_value_factory(config,datanotfound_value="N/A"):
     elif len(config) == 3:
         params =_init_key(config[1])
         if config[2].startswith("lambda"):
-            _f = eval(config[2])
+            _f = lambda_func_fatctory(service,eval(config[2]))
         else:
             raise Exception(get_message_help)
     else:
@@ -649,11 +668,11 @@ def _get_value_factory(config,datanotfound_value="N/A"):
         
     return _func
 
-def _format_message_factory(config,datanotfound_value="N/A"):
+def _format_message_factory(service,config,datanotfound_value="N/A"):
     pattern = config[0]
     f_params = []
     for c in config[1:]:
-        f_params.append(get_message_factory(c,datanotfound_value=datanotfound_value))
+        f_params.append(get_message_factory(service,c,datanotfound_value=datanotfound_value))
 
     def _func1(res):
         return pattern.format(*[f_param(res) for f_param in f_params ])
@@ -662,7 +681,7 @@ def _format_message_factory(config,datanotfound_value="N/A"):
         return pattern
     return _func1 if f_params else _func2
 
-def get_message_factory(config,datanotfound_value="N/A"):
+def get_message_factory(service,config,datanotfound_value="N/A"):
     if not config:
         def _func(res):
             if res.status_code >=200 and res.status_code < 300:
@@ -673,7 +692,7 @@ def get_message_factory(config,datanotfound_value="N/A"):
 
     if isinstance(config,str):
         if config.startswith("lambda"):
-            return eval(config)
+            return lambda_func_fatctory(service,eval(config))
         else:
             config = [config]
     elif not isinstance(config,(tuple,list)):
@@ -681,12 +700,12 @@ def get_message_factory(config,datanotfound_value="N/A"):
 
     if config[0] in modules:
         #single message,
-        return _get_value_factory(config,datanotfound_value=datanotfound_value)
+        return _get_value_factory(service,config,datanotfound_value=datanotfound_value)
     else:
         #message pattern
-        return _format_message_factory(config,datanotfound_value=datanotfound_value)
+        return _format_message_factory(service,config,datanotfound_value=datanotfound_value)
 
-def get_prtg_factory(config):
+def get_prtg_factory(service,config):
     if not config:
         def _func(res):
             if res.status_code >=200 and res.status_code < 300:
@@ -697,7 +716,7 @@ def get_prtg_factory(config):
 
     if isinstance(config,str):
         if config.startswith("lambda"):
-            return eval(config)
+            return lambda_func_fatctory(service,eval(config))
         else:
             config = [config]
     elif not isinstance(config,(tuple,list)):
@@ -705,8 +724,66 @@ def get_prtg_factory(config):
 
     if config[0] in modules:
         #single message,
-        return _get_value_factory(config,datanotfound_value=None)
+        return _get_value_factory(service,config,datanotfound_value=None)
     else:
         #message pattern
-        return _format_message_factory(config,datanotfound_value=None)
+        return _format_message_factory(service,config,datanotfound_value=None)
+
+def transform_factory(transform):
+    _func = getattr(modules[transform[0]],"transform")
+    def _transform1(res):
+        return _func(res)
+
+    def _transform2(res):
+        return _func(res,*args)
+
+    def _transform3(res):
+        return _func(res,**kwargs)
+
+    def _transform4(res):
+        return _func(res,*args,**kwargs)
+
+    if len(transform) == 1:
+        return _transform1
+    elif len(transform) == 2:
+        if isinstance(transform[1],dict):
+            kwargs = transform[1]
+            return _transform3
+        else:
+            args = transform[1]
+            if not isinstance(args,(list,tuple)):
+                args = [args]
+
+            return _transform2
+
+    else:
+        args = transform[1]
+        if not isinstance(args,(list,tuple)):
+            args = [args]
+        kwargs = transform[2]
+        return _transform4
+
+def init_transforms(transforms):
+    """
+    Transform is a way to add more method to response and tranform the response data
+    """
+    if not transforms:
+        return None
+    if not isinstance(transforms[0],(list,tuple)):
+        #only have one transform, transform it to a list
+        transforms = [transforms]
+
+    transform_funcs = []
+    for transform in transforms:
+        if transform[0] not in modules:
+            raise Exception("Module({1}) in transform({0}) Not Support".format(transform,transform[0]))
+        if not hasattr(modules[transform[0]],"transform"):
+            raise Exception("Module({1}) in transform({0}) doesn't support transform feature".format(transform,transform[0]))
+        transform_funcs.append(transform_factory(transform))
+
+    return transform_funcs
+        
+
+
+
 
