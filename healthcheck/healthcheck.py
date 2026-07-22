@@ -903,7 +903,7 @@ class ServiceHealthCheck(UserDict):
 
     @property
     def healthstatus_healthdata(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[1] if status else None
 
     @healthstatus_healthdata.setter
@@ -920,7 +920,7 @@ class ServiceHealthCheck(UserDict):
 
     @property
     def healthstatus_nextchecktime(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[0] if status else None
 
     @healthstatus_nextchecktime.setter
@@ -929,37 +929,37 @@ class ServiceHealthCheck(UserDict):
 
     @property
     def healthstatus_nextcheck(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[0].strftime("%Y-%m-%dT%H:%M:%S") if status else ""
 
     @property
     def healthstatus_name(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[1][2] if status and status[1] else ""
 
     @property
     def healthstatus_info(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[1][3] if status and status[1] else ""
 
     @property
     def healthstatus_prtgdata(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[1][4] if status and status[1] and len(status[1]) >= 6 else None
 
     @property
     def healthstatus_persistent(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[1][-1] if status and status[1] else False
 
     @property
     def healthstatus_checkstart(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[1][0].strftime("%Y-%m-%dT%H:%M:%S.%f") if status and status[1] else ""
 
     @property
     def healthstatus_checkend(self):
-        status = self["healthstatus"]
+        status = self.get("healthstatus")
         return status[1][1].strftime("%Y-%m-%dT%H:%M:%S.%f") if status and status[1] else ""
 
     @property
@@ -1137,7 +1137,7 @@ class PRTGMixin(object):
                 if not service.prtgenabled:
                     continue
 
-                if service.healthstatus_nextchecktime + timedelta(milliseconds=service["timeout"]) < now:
+                if not service.healthstatus_nextchecktime or service.healthstatus_nextchecktime + timedelta(milliseconds=service["timeout"]) < now:
                     #the current healthstatus is outdated
                     prtgdata = None
                     healthstatus_name = "error"
@@ -1240,10 +1240,10 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 else:
                     service.healthstatus = [next_checktime,None] 
                 if existing_service:
-                    service.last_greenhealthcheck = existing_service.last_greenhealthcheck
-                    service.last_yellowhealthcheck = existing_service.last_yellowhealthcheck
-                    service.last_redhealthcheck = existing_service.last_redhealthcheck
-                    service.last_errorhealthcheck = existing_service.last_errorhealthcheck
+                    service._last_greenhealthcheck = existing_service._last_greenhealthcheck
+                    service._last_yellowhealthcheck = existing_service._last_yellowhealthcheck
+                    service._last_redhealthcheck = existing_service._last_redhealthcheck
+                    service._last_errorhealthcheck = existing_service._last_errorhealthcheck
 
         return True
 
@@ -2169,7 +2169,6 @@ class EditingHealthCheck(HealthCheck):
     """.format(self.configfile,len(errors),"\n    ".join(errors)))
     
             #save the publish config file
-
             now = utils.now()
             configdir,configfilename = os.path.split(self.healthcheck.configfile)
             configfilebase,configfileext = os.path.splitext(configfilename)
@@ -2202,7 +2201,6 @@ class EditingHealthCheck(HealthCheck):
     
             #update the current healthceck config file
             os.rename(self.configfile,self.healthcheck.configfile)
-    
             return True
 
 class SystemViewMeta(list):
