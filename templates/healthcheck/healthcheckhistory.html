@@ -25,7 +25,7 @@
       <tr><td colspan=4>
           {% for p in pages %}
                   {% if page.pageid == p.pageid %}
-                  <span style="width:120px;padding-left:10px;color:blue">{{p.starttime.strftime("%Y-%m-%d %H:%M:%S")}}</span>
+                  <span style="width:120px;padding-left:10px;color:darkred;font-style: italic;font-weight:bold;">{{p.starttime.strftime("%Y-%m-%d %H:%M:%S")}}</span>
                   {% else %}
                   <A style="width:120px;padding-left:10px" href="{{baseurl}}/{{history}}/{{service.sectionid}}/{{service.serviceid}}/{{p.pageid}}">{{p.starttime.strftime("%Y-%m-%d %H:%M:%S")}}</A>
                   {% endif %}
