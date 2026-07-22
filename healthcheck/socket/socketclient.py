@@ -72,6 +72,7 @@ class SocketClient(object):
 
                     async with asyncio.timeout(1):
                         reader,writer = await asyncio.open_connection(self.host,self.port) 
+
                     conn = base.BaseConnection(reader,writer)
                     logger.info("{} : Connected".format(self))
 
@@ -122,6 +123,7 @@ class SocketClient(object):
         """
         try:
             conn = await self.get_connection(reconnect_attempts)
+
             if self.timeout:
                 async with asyncio.timeout(self.timeout):
                     await conn.send(data)
@@ -150,11 +152,13 @@ class SocketClient(object):
         try:
             data = None
             conn = await self.get_connection(reconnect_attempts)
+
             if self.timeout:
                 async with asyncio.timeout(self.timeout):
                     data = await conn.receive()
             else:
                 data = await conn.receive()
+
             logger.debug("{}: Succeed to receive the data: {}".format(self,data))
             return data
         except exceptions.SystemShutdown as ex:
@@ -181,6 +185,7 @@ class CommandClient(SocketClient):
         self._lock = asyncio.Lock()
 
     async def exec(self,command,reconnect_attempts=-1):
+
         async with self._lock:
             reconnect = 0
             while True:
@@ -188,7 +193,13 @@ class CommandClient(SocketClient):
                     logger.debug("{}: Begin to send command({}) to server".format(self,command))
                     await self.send(command,0)
                     logger.debug("{}: Succeed to send command({}) to server, wait the response".format(self,command))
-                    res = await self.receive(0)
+                    while True:
+                        res = await self.receive(0)
+                        if res[0] == status.WAITING:
+                            logger.debug(res[1])
+                            continue
+                        else:
+                            break
                     logger.debug("{0}: Receive the response({2}) of the command({1}) from server".format(self,command,res))
                     if res[0] > 0:
                         return res[1]
