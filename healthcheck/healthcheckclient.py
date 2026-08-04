@@ -13,17 +13,31 @@ from . import utils
 logger = logging.getLogger("healthcheck.healthcheckclient")
 
 class Event(object):
+    """
+    Normally, more than one clients can waiting on the healthstatus updating. 
+    With single event, the logic should find the final client to clear the event and the use it for future healthstatus updating. But it is hard to know which client is the final client. 
+    With a list of events, we can always use a new event for future usage, and keep the current one on the set status and then allow multple clients can be waken up.
+    """
     def __init__(self):
-        self.locks = [asyncio.Event() for i in range(settings.ASYNCIO_EVENTS)]
+        self.locks = [[asyncio.Event(),0] for i in range(settings.ASYNCIO_EVENTS)] #a list of tuple(event, the number of waiting clients)
         self._max_index  = len(self.locks) - 1
         self.index = 0
-        self._clear = False
+        self._clear = False 
 
     async def wait(self):
-        await self.locks[self.index].wait()
+        self.locks[self.index][1] += 1
+        await self.locks[self.index][0].wait()
 
     def set(self):
-        i = self.index
+        if self.locks[self.index][1] == 0:
+            #no client is waiting on the current lock, no need to wake up the waiting clients
+            #reuse the current lock
+            return
+
+        #some clients are waiting on the current lock, 
+        #wake up them 
+        self.locks[self.index][0].set()
+        #prepare the next lock for clients to use.
         if self.index == self._max_index:
             self.index = 0
             self._clear = True
@@ -31,9 +45,9 @@ class Event(object):
             self.index += 1
 
         if self._clear:
-            self.locks[self.index].clear()
-
-        self.locks[i].set()
+            #not the first round, the event is already set, should clear it first.
+            self.locks[self.index][0].clear()
+            self.locks[self.index][1] = 0
 
 class BaseHealthStatusListenerClient(socket.SocketClient):
     def __init__(self,timeout):
@@ -78,6 +92,7 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
                     data = None
                     status_code = None
                     status_code,data = await self.receive(-1)
+                    #logger.error("Receiving health status data: code={}, data={}".format(status_code,data))
                     if status_code == socket.HEALTHCONFIG_HAHSCODE:
                         if self.healthcheck.config_hashcode != data:
                             self.healthcheck.reload()
