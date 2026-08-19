@@ -24,6 +24,7 @@ Next Check Time : N/A
 let connect_msg = "initial connecting..."
 let connected = false
 let lasttime2receivedata = new Date()
+let healthcheck_timeouts = 0
 const statuslist = ["green","yellow","red","error"]
 
 function browserside_check() {
@@ -40,6 +41,9 @@ function browserside_check() {
             nextcheck_timeout = servicestatus["timeout"] + nextcheck_timeout_delay
             if (now - servicestatus["nextcheck"] > nextcheck_timeout ) {
                 //next check not running, maybe caused by healthcheck service or the target service
+                if (section == "Healthcheck" && service == "Healthcheck-Heartbeat") {
+                    healthcheck_timeouts += 1
+                }
                 statuslist.forEach((status) => {
                     if (status == "error") {
                         document.getElementById(section+ "-" + service + "-statusname-error").style.display = "inline"
@@ -64,6 +68,8 @@ function browserside_check() {
     Next Check Time:` + nextcheckstr + `
     `
                 }
+            } else if (section == "Healthcheck" && service == "Healthcheck-Heartbeat") {
+                healthcheck_timeouts = 0
             }
         });
     });
@@ -134,6 +140,12 @@ function fetch_healthstatus() {
                   readdata()
                   return
               }
+              if (healthcheck_timeouts >= 3) {
+                  //System failed to sync all services' health check data, 
+                  //Still don't know the reason until now
+                  //Reconnect the status stream to resolve the issue
+                  throw new Error("Failed to sync all services' healthcheck data, reconnect the sync service to fix this issue.")
+              }
 
               if (remaindata != "") {
                   value = remaindata + value
@@ -161,7 +173,7 @@ function fetch_healthstatus() {
                       if (datas[i][1] === null) {
                           continue
                       }
-                      console.log("Received Data: " + JSON.stringify(datas[i]))
+                      //console.log("Received Data: " + JSON.stringify(datas[i]))
                       checkstart = datas[i][1][1][0]
                       if (healthstatus[datas[i][0][0]][datas[i][0][1]]["checkstart"] == checkstart) {
                           //the status was already processed before
@@ -202,6 +214,7 @@ function fetch_healthstatus() {
             })
           .catch(error => {
               connect_msg = "Disconnect from healthcheck web server, try again 5 seconds later: " + error
+              console.log(connect_msg)
               setTimeout(fetch_healthstatus,5000)
           });
     
@@ -210,6 +223,7 @@ function fetch_healthstatus() {
     })
     .catch(error => {
         connect_msg = "Disconnect from healthcheck web server, try again 5 seconds later: " + error
+        console.log(connect_msg)
         setTimeout(fetch_healthstatus,5000)
     })
 }
