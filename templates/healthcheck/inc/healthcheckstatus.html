@@ -26,11 +26,16 @@ let connect_msg = "initial connecting..."
 let connect_times = 0
 let lasttime2receivedata = new Date()
 let heartbeat_timeouts = 0
-let firsttime = true
+let running = true
+const nextcheck_timeout_delay = {{nextcheck_timeout_delay}}
 const statuslist = ["green","yellow","red","error"]
 
+window.addEventListener('beforeunload', (event) => {
+    running = false
+});
+
 function browserside_check() {
-    now = new Date()
+    let now = new Date()
     if ((now - lasttime2receivedata) > 120000) {
         //never receive any data in latest 2+ minutes
         //reload the page
@@ -39,7 +44,6 @@ function browserside_check() {
         }
         return 
     }
-    var nextcheck_timeout_delay = {{nextcheck_timeout_delay}}
     Object.entries(healthstatus).forEach(([section, sectionstatus]) => {
         Object.entries(sectionstatus).forEach(([service,servicestatus]) => {
             if (!servicestatus["nextcheck"]) {
@@ -48,7 +52,7 @@ function browserside_check() {
             if (!servicestatus["nextcheck"]) {
                 return
             }
-            nextcheck_timeout = servicestatus["timeout"] + nextcheck_timeout_delay
+            const nextcheck_timeout = servicestatus["timeout"] + nextcheck_timeout_delay
             if (now - servicestatus["nextcheck"] > nextcheck_timeout ) {
                 //next check not running, maybe caused by healthcheck service or the target service
                 if (section == "Healthcheck" && service == "Healthcheck-Heartbeat") {
@@ -62,8 +66,8 @@ function browserside_check() {
                     }
                 });
                 
-                nextcheck = servicestatus["nextcheck"]
-                nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + "T" + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
+                const nextcheck = servicestatus["nextcheck"]
+                const nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + "T" + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
                 if (connect_msg) {
                     healthstatus[section][service]["message"] = `Health Status : error 
     Health Status Message : ` + connect_msg + `
@@ -128,7 +132,8 @@ async function fetch_healthstatus() {
         const resbody = response.body.pipeThrough(decoderStream)
 
         const reader = resbody.getReader();
-        remaindata = ""
+        let remaindata = ""
+        let datas = null
         while (true) {
             const { done, value } = await reader.read();
             lasttime2receivedata = new Date()
@@ -139,19 +144,19 @@ async function fetch_healthstatus() {
                 //continue to read data from stream
                 continue
             }
-        
-            if (remaindata != "") {
-                datas = (remaindata + value).split("\n")
-            } else {
-                datas = value.split("\n")
-            }
-            if (datas[datas.length - 1] != "") {
-                remaindata = datas[datas.length - 1]
-            }
-            for(i = 0;i < datas.length - 1;i++) {
+            datas = value.split("\n")
+            for(let i = 0;i < datas.length - 1;i++) {
                 try{
                     //data item: [[sectionid,serviceid],[next checktime,[check startime,check endtime,status name,msg,persistent?]]]
-                    datas[i] = JSON.parse(datas[i])
+                    if ( i === 0 && remaindata !== "" ) {
+                        try {
+                            datas[i] = JSON.parse(datas[i])
+                        } catch (error) {
+                            datas[i] = JSON.parse(remaindata + datas[i])
+                        }
+                    } else {
+                        datas[i] = JSON.parse(datas[i])
+                    }
                     if (typeof datas[i] == "string") {
                         if (datas[i] === "reload") {
                             window.location.reload(true);
@@ -169,7 +174,7 @@ async function fetch_healthstatus() {
                     if (datas[i][0][0] == "Healthcheck" && datas[i][0][1] == "Healthcheck-Heartbeat") {
                         heartbeat_timeouts = 0
                     }
-                    checkstart = datas[i][1][1][0]
+                    const checkstart = datas[i][1][1][0]
                     if (healthstatus[datas[i][0][0]][datas[i][0][1]]["checkstart"] == checkstart) {
                         //the status was already processed before
                         continue
@@ -182,10 +187,10 @@ async function fetch_healthstatus() {
                             document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-statusname-" + status).style.display="none"
                         }
                     });
-                    nextcheck = new Date(datas[i][1][0])
+                    const nextcheck = new Date(datas[i][1][0])
                     healthstatus[datas[i][0][0]][datas[i][0][1]]["nextcheck"] = nextcheck
         
-                    nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + "T" + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
+                    const nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + "T" + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
                     healthstatus[datas[i][0][0]][datas[i][0][1]]["message"] = "Health Status : " + datas[i][1][1][2] + `
 Check Start Time : ` + datas[i][1][1][0] + `
 Check End Time : ` + datas[i][1][1][1] + `
@@ -200,28 +205,25 @@ Next Check Time : `  + nextcheckstr + `
                         document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href="";
                     }
                 } catch(error) {
-                    console.error("data: " + datas[i] + ". error:" + error)
+                    console.error("connect_times:" + connect_times + " , data: " + datas[i] + " , remaindata:" + remaindata + " , error:" + error)
                 }
             }
+            remaindata = datas[datas.length - 1]
             if (heartbeat_timeouts >= 3) {
                 //System failed to sync all services' health check data, 
                 //Still don't know the reason until now
                 //Reconnect the status stream to resolve the issue
-                throw new Error("Failed to sync all services' healthcheck data, reconnect the sync service to fix this issue.")
+                throw new Error("Failed to sync services' healthcheck data, reconnect to healthcheck service.")
             }
         }
     } catch (error) { 
         if (controller !== null) {
             controller.abort()
         }
-        if (connect_times > 1) {
-            connect_msg = "Disconnect from healthcheck web server, try again 5 seconds later: " + error
+        if (running) {
+            connect_msg = "Connect times(" + connect_times + ") : Can't read healthdata from web server, try again 5 seconds later: " + error
             console.error(connect_msg)
             setTimeout(fetch_healthstatus,5000)
-        } else {
-            //First connection is always failed if refresh the dashboard page
-            //Can't find the reason, ignoring the annoy message 
-            setTimeout(fetch_healthstatus,1000)
         }
     }
 }
