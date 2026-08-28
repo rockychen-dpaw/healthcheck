@@ -12,7 +12,7 @@ dependencies = [
   "quart==0.21.0",
   "hypercorn==0.18.0",
   "pytz==2026.3.post1",
-  "python-dotenv==1.2.2",
+  "python-dotenv==1.2.3",
   "httpx==0.28.1",
   "humanize==4.16.0",
   "defusedxml==0.7.1",
@@ -21,7 +21,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "ipython>=9.16.1",
-  "pre-commit>=4.6.1",
+  "pre-commit>=4.6.2",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
 ]
