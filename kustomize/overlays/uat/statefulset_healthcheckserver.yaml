@@ -41,6 +41,8 @@ spec:
               cpu: '500m'
           securityContext:
             runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
             runAsUser: 1000
             privileged: false
             allowPrivilegeEscalation: false
