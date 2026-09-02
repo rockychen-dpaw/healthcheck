@@ -15,6 +15,10 @@ spec:
       labels:
         app: healthcheck-deployment
     spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: healthcheck
           image: ghcr.io/dbca-wa/healthcheck
@@ -51,7 +55,6 @@ spec:
             runAsNonRoot: true
             seccompProfile:
               type: RuntimeDefault
-            runAsUser: 1000
             privileged: false
             allowPrivilegeEscalation: false
             capabilities:
