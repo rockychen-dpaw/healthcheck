@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import defusedxml.ElementTree as ET
@@ -92,7 +92,7 @@ def get_anonymous_session(timeout: float = 10.0) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=timeout)
 
 
-async def fetch_data(session, url, error_list, source_desc) -> Optional[Dict[str, Any]]:
+async def fetch_data(session, url, error_list, source_desc) -> dict[str, Any] | None:
     """Convenience function to query an authenticated endpoint, parse and return JSON."""
     try:
         resp = await session.get(url)
@@ -105,7 +105,7 @@ async def fetch_data(session, url, error_list, source_desc) -> Optional[Dict[str
         return None
 
 
-async def get_healthcheck() -> Dict[str, Any]:
+async def get_healthcheck() -> dict[str, Any]:
     """Query HTTP sources and return a dictionary of response successes."""
     async with get_session() as session:
         d = {"server_time": datetime.now().astimezone(TZ).isoformat(timespec="seconds"), "success": True, "errors": []}
@@ -351,46 +351,40 @@ async def get_healthcheck() -> Dict[str, Any]:
         return d
 
 
-def build_prtg_channels(data: Dict[str, Any]) -> list:
+def build_prtg_channels(data: dict[str, Any]) -> list:
     """Transform a get_healthcheck() result into a list of PRTG channel dicts."""
 
-    def delay_channel(name: str, value_min, max_delay: int = None) -> Dict[str, Any]:
+    def delay_channel(name: str, value_min, max_delay: int = None) -> dict[str, Any]:
         """A channel having a time value that represent a delay/last-seen occurrence (optional maximum)."""
-        ch: Dict[str, Any] = {
+        ch: dict[str, Any] = {
             "channel": name,
             "value": value_min if value_min is not None else 0,
             "unit": "Custom",
             "customunit": "min",
             "float": 1,
         }
-        if value_min is None:
-            ch["error"] = 1
-        elif max_delay is not None and value_min > max_delay:
+        if value_min is None or max_delay is not None and value_min > max_delay:
             ch["error"] = 1
         return ch
 
-    def rate_channel(name: str, value, min_val: int = None) -> Dict[str, Any]:
+    def rate_channel(name: str, value, min_val: int = None) -> dict[str, Any]:
         """A channel having a rate/frequency of units (optional minimum)."""
-        ch: Dict[str, Any] = {"channel": name, "value": value if value is not None else 0, "unit": "Custom", "customunit": "points/min"}
-        if value is None:
-            ch["error"] = 1
-        elif min_val is not None and value < min_val:
+        ch: dict[str, Any] = {"channel": name, "value": value if value is not None else 0, "unit": "Custom", "customunit": "points/min"}
+        if value is None or min_val is not None and value < min_val:
             ch["error"] = 1
         return ch
 
-    def count_channel(name: str, value, min_val: int = None) -> Dict[str, Any]:
+    def count_channel(name: str, value, min_val: int = None) -> dict[str, Any]:
         """A channel having an integer count (optional minimum)."""
-        ch: Dict[str, Any] = {"channel": name, "value": value if value is not None else 0, "unit": "Count"}
-        if value is None:
-            ch["error"] = 1
-        elif min_val is not None and value < min_val:
+        ch: dict[str, Any] = {"channel": name, "value": value if value is not None else 0, "unit": "Count"}
+        if value is None or min_val is not None and value < min_val:
             ch["error"] = 1
         return ch
 
-    def status_channel(name: str, value) -> Dict[str, Any]:
+    def status_channel(name: str, value) -> dict[str, Any]:
         """A channel having a boolean status."""
         ok = bool(value)
-        ch: Dict[str, Any] = {"channel": name, "value": 1 if ok else 0, "unit": "Custom", "customunit": "status"}
+        ch: dict[str, Any] = {"channel": name, "value": 1 if ok else 0, "unit": "Custom", "customunit": "status"}
         if not ok:
             ch["error"] = 1
         return ch
@@ -569,7 +563,7 @@ async def index_legacy():
 
     output += "</p>\n<p>\n"
 
-    if "csw_catalogue_count" in data and data["csw_catalogue_count"]:  # Should be >0
+    if data.get("csw_catalogue_count"):  # Should be >0
         output += f"CSW spatial catalogue for SSS: {data['csw_catalogue_count']} layers<br>\n"
     else:
         output += "CSW API endpoint: error<br>\n"
