@@ -158,6 +158,7 @@ class HealthCheckStatus(object):
 class HealthCheckPage(object):
     _last_greenhealthcheck = None
     _last_yellowhealthcheck = None
+    _last_greenyellowhealthcheck = None
     _last_redhealthcheck = None
     _last_errorhealthcheck = None
 
@@ -199,6 +200,12 @@ class HealthCheckPage(object):
         if self._size is None:
             self._load()
         return self._last_yellowhealthcheck
+
+    @property
+    def last_greenyellowhealthcheck(self):
+        if self._size is None:
+            self._load()
+        return self._last_greenyellowhealthcheck
 
     @property
     def last_redhealthcheck(self):
@@ -259,8 +266,10 @@ class HealthCheckPage(object):
                     self._last_healthcheck = HealthCheckStatus.deserialize(data)
                     if self._last_healthcheck[2] == "green":
                         self._last_greenhealthcheck = self._last_healthcheck
+                        self._last_greenyellowhealthcheck = self._last_healthcheck
                     elif self._last_healthcheck[2] == "yellow":
                         self._last_yellowhealthcheck = self._last_healthcheck
+                        self._last_greenyellowhealthcheck = self._last_healthcheck
                     elif self._last_healthcheck[2] == "red":
                         self._last_redhealthcheck = self._last_healthcheck
                     else:
@@ -647,6 +656,24 @@ class HealthCheckPages(BasicHealthCheckPages):
             return None
 
     @property
+    def last_greenyellowhealthcheck(self):
+        """
+        Called by healthcheck server
+        because _pages are loaded and catched in memory and only healthcheck server can change this file, no need to check whether the file was changed by other process after loading.
+        Return the last green or yellow healthcheck whichever is the latest one.
+        """
+        if self._pages is None:
+            self._load()
+        if self._pages:
+            for i in range(len(self._pages) - 1,-1,-1):
+                data = self._pages[i].last_greenyellowhealthcheck
+                if data:
+                    return data
+
+            return None
+        else:
+            return None
+    @property
     def last_redhealthcheck(self):
         """
         Called by healthcheck server
@@ -785,6 +812,17 @@ class ServiceHealthCheck(UserDict):
     def last_yellowhealthcheck(self,val):
         self._last_yellowhealthcheck = val
 
+    _last_greenyellowhealthcheck = "__NULL__"
+    @property
+    def last_greenyellowhealthcheck(self):
+        if self._last_greenyellowhealthcheck == "__NULL__": 
+            self._last_greenyellowhealthcheck = self.healthcheckpages.last_greenyellowhealthcheck
+        return self._last_greenyellowhealthcheck
+
+    @last_greenyellowhealthcheck.setter
+    def last_greenyellowhealthcheck(self,val):
+        self._last_greenyellowhealthcheck = val
+
     _last_redhealthcheck = "__NULL__"
     @property
     def last_redhealthcheck(self):
@@ -916,8 +954,10 @@ class ServiceHealthCheck(UserDict):
     def healthstatus_healthdata(self,val):
         if val[2] == "green":
             self.last_greenhealthcheck = val
+            self.last_greenyellowhealthcheck = val
         elif val[2] == "yellow":
             self.last_yellowhealthcheck = val
+            self.last_greenyellowhealthcheck = val
         elif val[2] == "red":
             self.last_redhealthcheck = val
         else:
@@ -1248,6 +1288,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if existing_service:
                     service._last_greenhealthcheck = existing_service._last_greenhealthcheck
                     service._last_yellowhealthcheck = existing_service._last_yellowhealthcheck
+                    service._last_greenyellowhealthcheck = existing_service._last_greenyellowhealthcheck
                     service._last_redhealthcheck = existing_service._last_redhealthcheck
                     service._last_errorhealthcheck = existing_service._last_errorhealthcheck
 
