@@ -567,11 +567,17 @@ class BasicHealthCheckPages(object):
                 ealiest_nonexpiretime -= timedelta(days=self._historyexpire - 1)
             #find the index of the last expired data
             index_of_latest_expiredata = -1
-            for i in range(1,len(self._pages)):
-                if self._pages[i - 1].starttime < ealiest_nonexpiretime:
-                    index_of_latest_expiredata = i - 1
+            for i in range(len(self._pages)):
+                if self._pages[i].starttime < ealiest_nonexpiretime:
+                    #this page contains some expire data, but also can contain non-expired data.
+                    continue
                 else:
+                    #This is the first page whose data is not expired.
+                    #The previous page must contain expired data, and maybe contain non-expired data
+                    #Preserve the previous page too
+                    index_of_latest_expiredata = i - 2
                     break
+
             if index_of_latest_expiredata >= 0:
                 #remove expired data from memory
                 for i in range(index_of_latest_expiredata,-1,-1):
