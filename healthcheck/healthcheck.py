@@ -49,48 +49,60 @@ class BaseServiceHealthCheckTask(object):
         pass
 
     async def run(self):
-        starttime = utils.now()
+        attempts = 0
         endtime = None
         res = None
-        if self.servicehealthcheck.url:
-            try:
+        healthstatus = None
+        nextchecktime = self.servicehealthcheck.healthstatus_nextchecktime
+        while not healthstatus:
+            attempts += 1
+            starttime = utils.now()
+            if self.servicehealthcheck.url:
                 try:
-                    res = None
-                    data = None
-                    #logger.debug("{} : Start to run the healthcheck task({})".format(self.servicehealthcheck,self.__class__.__name__))
-                    async with httpx.AsyncClient(auth=self.servicehealthcheck.auth,timeout=self.servicehealthcheck.request_timeout,verify=self.servicehealthcheck.sslverify,headers=self.servicehealthcheck.headers) as client:
-                        if self.servicehealthcheck.method == "GET":
-                            func = client.get
-                        elif self.servicehealthcheck.method == "POST":
-                            func = client.post
-                            data = self.servicehealthcheck.formdata
-                        elif self.servicehealthcheck.method == "PUT":
-                            func = client.put
-                            data = self.servicehealthcheck.formdata
-                        elif self.servicehealthcheck.method == "DELETE":
-                            func = client.delete
-                        else:
-                            #Not support
-                            raise Exception("Http method({}) Not Support".format(self.method))
-                        if data:
-                            res = await func(self.servicehealthcheck.url,data=data)
-                        else:
-                            res = await func(self.servicehealthcheck.url)
-                finally:
-                    endtime = utils.now()
-    
-                healthstatus = HealthCheck.check_response(self.servicehealthcheck,res)
-            except httpx.TimeoutException as ex:
-                healthstatus = ["red","httpx.{} : {}".format(ex.__class__.__name__,str(ex)),None]
-                if not endtime:
-                    endtime = utils.now()
-            except Exception as ex:
-                healthstatus = ["error","{} : {}".format(ex.__class__.__name__,str(ex)),None]
-                if not endtime:
-                    endtime = utils.now()
-        else:
-            healthstatus = ["green","OK",None]
-            endtime = utils.now()
+                    try:
+                        res = None
+                        data = None
+                        #logger.debug("{} : Start to run the healthcheck task({})".format(self.servicehealthcheck,self.__class__.__name__))
+                        async with httpx.AsyncClient(auth=self.servicehealthcheck.auth,timeout=self.servicehealthcheck.request_timeout,verify=self.servicehealthcheck.sslverify,headers=self.servicehealthcheck.headers) as client:
+                            if self.servicehealthcheck.method == "GET":
+                                func = client.get
+                            elif self.servicehealthcheck.method == "POST":
+                                func = client.post
+                                data = self.servicehealthcheck.formdata
+                            elif self.servicehealthcheck.method == "PUT":
+                                func = client.put
+                                data = self.servicehealthcheck.formdata
+                            elif self.servicehealthcheck.method == "DELETE":
+                                func = client.delete
+                            else:
+                                #Not support
+                                raise Exception("Http method({}) Not Support".format(self.method))
+                            if data:
+                                res = await func(self.servicehealthcheck.url,data=data)
+                            else:
+                                res = await func(self.servicehealthcheck.url)
+                    finally:
+                        endtime = utils.now()
+        
+                    healthstatus = HealthCheck.check_response(self.servicehealthcheck,res)
+                    if attempts > 1:
+                        healthstatus[1] = "{1}. Attempts:{0}".format(attempts,healthstatus[1])
+                except (httpx.TimeoutException,httpx.NetworkError,httpx.StreamError,httpx.ProxyError) as ex:
+                    if attempts < self.servicehealthcheck.retry and nextchecktime and (nextchecktime - endtime).total_seconds() >= self.servicehealthcheck.total_retry_processtime:
+                        #guarantee that next check will not overlap with next retry
+                        if self.servicehealthcheck.retry_interval:
+                            await asyncio.sleep(self.servicehealthcheck.retry_interval)
+                        continue
+                    else:
+                        healthstatus = ["red","httpx.{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),None]
+                except Exception as ex:
+                    if ex.__class__.__module__ == "builtins":
+                        healthstatus = ["error","{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),None]
+                    else:
+                        healthstatus = ["error","{1}.{2}: {3}. Attempts={0}".format(attempts,ex.__class__.__module__,ex.__class__.__name__,str(ex)),None]
+            else:
+                healthstatus = ["green","OK",None]
+                endtime = utils.now()
 
         healthstatus.insert(0,starttime)
         healthstatus.insert(1,endtime)
@@ -99,7 +111,7 @@ class BaseServiceHealthCheckTask(object):
         self.servicehealthcheck.healthstatus_healthdata = healthstatus
 
         try:
-            await self.servicehealthcheck.save_checkingstatus(healthstatus,res)
+            await self.servicehealthcheck.save_checkingstatus(healthstatus,res,attempts)
         except Exception as ex:
             traceback.print_exc()
             logger.error("Failed to save the healthcheck status details({2}) of service({0}.{1}). {3}: {4}".format(self.servicehealthcheck.sectionid,self.servicehealthcheck.serviceid,healthstatus,ex.__class__.__name__,str(ex)))
@@ -916,8 +928,20 @@ class ServiceHealthCheck(UserDict):
         return self["request_timeout"]
 
     @property
+    def total_retry_processtime(self):
+        return self["total_retry_processtime"]
+
+    @property
     def timeout(self):
         return self["timeout"]
+
+    @property
+    def retry(self):
+        return self["retry"]
+
+    @property
+    def retry_interval(self):
+        return self["retry_interval"]
 
     @property
     def sslverify(self):
@@ -1077,7 +1101,7 @@ class ServiceHealthCheck(UserDict):
         else:
             return tomorrow + timedelta(seconds=checkingtime[0][0] + self.interval - (checkingtime[0][0] % self.interval) + offset)
 
-    async def save_checkingstatus(self,healthstatus,res):
+    async def save_checkingstatus(self,healthstatus,res,attempts):
         if healthstatus[-1]:
             details = {
                 "request": {
@@ -1089,6 +1113,8 @@ class ServiceHealthCheck(UserDict):
                 },
                 "healthstatus":healthstatus,
             }
+            if attempts > 1:
+                details["request"]["attempts"] = attempts
             if self.headers:
                 details["request"]["headers"] = self.headers
     
@@ -1432,7 +1458,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                     baseinterval = int(str(baseinterval).strip())
                     config["interval"] = baseinterval
             except Exception as ex:
-                errors.append("Section {}({}): The interval({}) is not an integer.".format(sectionindex,sectionid,config.get("interval")))
+                errors.append("Section {}({}): The proprety 'interval'({}) is not an integer.".format(sectionindex,sectionid,config.get("interval")))
                 continue
     
             try:
@@ -1443,8 +1469,34 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                     basetimeout = int(str(basetimeout).strip())
                 config["timeout"] = basetimeout
             except Exception as ex:
-                errors.append("Section {}({}): The timeout({}) is not an integer.".format(sectionindex,sectionid,config.get("timeout")))
+                errors.append("Section {}({}): The property 'timeout'({}) is not an integer.".format(sectionindex,sectionid,config.get("timeout")))
                 basetimeout = settings.HEALTHCHECKSERVICE_TIMEOUT
+                continue
+
+            try:
+                baseretry = config.get("retry")
+                if baseretry is None:
+                    baseretry = settings.HEALTHCHECKSERVICE_RETRY
+                elif not isinstance(baseretry,int):
+                    baseretry = int(str(baseretry).strip())
+                config["retry"] = baseretry
+            except Exception as ex:
+                errors.append("Section {}({}): The property 'retry'({}) is not an integer.".format(sectionindex,sectionid,config.get("retry")))
+                baseretry = settings.HEALTHCHECKSERVICE_RETRY
+                continue
+
+            try:
+                baseretryinterval = config.get("retry_interval")
+                if not baseretryinterval:
+                    baseretryinterval = settings.HEALTHCHECKSERVICE_RETRY_INTERVAL
+                elif not isinstance(baseretryinterval,int):
+                    baseretryinterval = int(str(baseretryinterval).strip()) / 1000
+                else:
+                    baseretryinterval = baseretryinterval / 1000
+                config["retryinterval"] = baseretryinterval
+            except Exception as ex:
+                errors.append("Section {}({}): The property 'retry_interval'({}) is not an integer.".format(sectionindex,sectionid,config.get("retry_interval")))
+                baseretryinterval = settings.HEALTHCHECKSERVICE_RETRY_INTERVAL
                 continue
 
             basemethod = config.get("method")
@@ -1721,8 +1773,34 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                     else:
                         service["interval"] = baseinterval
                 except Exception as ex:
-                    errors.append("Service {0}({1}).{2}({3}): The interval({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("interval")))
+                    errors.append("Service {0}({1}).{2}({3}): The property 'interval'({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("interval")))
                     continue
+
+                try:
+                    retry = service.get("retry")
+                    if retry is None:
+                        retry = baseretry
+                    elif not isinstance(retry,int):
+                        retry = int(str(retry).strip())
+                except Exception as ex:
+                    errors.append("Service {0}({1}).{2}({3}): The property 'retry'({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("retry")))
+                    retry = baseretry
+                    continue
+                service["retry"] = retry
+
+                try:
+                    retryinterval = service.get("retry_interval")
+                    if not retryinterval:
+                        retryinterval = baseretryinterval
+                    elif not isinstance(retryinterval,int):
+                        retryinterval = int(str(retryinterval).strip()) / 1000
+                    else:
+                        retryinterval = retryinterval / 1000
+                except Exception as ex:
+                    errors.append("Service {0}({1}).{2}({3}): The property 'retry_interval'({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("retry_interval")))
+                    retryinterval = baseretryinterval
+                    continue
+                service["retry_interval"] = retryinterval
 
                 try:
                     timeout = service.get("timeout")
@@ -1731,11 +1809,12 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                     elif not isinstance(timeout,int):
                         timeout = int(str(timeout).strip())
                 except Exception as ex:
-                    errors.append("Service {0}({1}).{2}({3}): The timeout({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("timeout")))
+                    errors.append("Service {0}({1}).{2}({3}): The property 'timeout'({4}) is not an integer".format(sectionindex,sectionid,serviceindex,serviceid,service.get("timeout")))
                     timeout = basetimeout
                     continue
                 service["timeout"] = timeout
-                service["request_timeout"] = timeout / 1000.0
+                service["total_retry_processtime"] = (settings.CONNECT_TIMEOUT + timeout) / 1000.0 + retryinterval
+                service["request_timeout"] = httpx.Timeout(connect = settings.CONNECT_TIMEOUT / 1000.0, read=timeout / 1000.0,write=timeout / 1000.0,pool=timeout/1000.0)
 
                 try:
                     historyexpire = service.get("historyexpire")
