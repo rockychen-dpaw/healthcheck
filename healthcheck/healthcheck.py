@@ -123,7 +123,7 @@ class BaseServiceHealthCheckTask(object):
                         continue
                 except (httpx.TimeoutException,httpx.StreamError) as ex:
                     if attempts >= self.servicehealthcheck.retry:
-                        healthstatus = ["red","httpx.{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),None]
+                        healthstatus = HealthCheck.populate_healthstatus(self.servicehealthcheck,"red","httpx.{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),attempts,processtime)
                     elif nextchecktime and (nextchecktime - endtime).total_seconds() >= self.servicehealthcheck.total_retry_processtime:
                         #still have time to try again
                         if self.servicehealthcheck.retry_interval:
