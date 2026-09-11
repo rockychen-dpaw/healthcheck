@@ -55,20 +55,13 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
         self._statuslist = CycleList(settings.HEALTHSTATUS_BUFFER)
         self._healthstatus_task = None
         self._wait = Event()
-        self.continuouscheck_started = False
+        self.continuouscheck_started = None
 
     async def wait(self):
         """
         Block forever until waked by new healthstatus
         """
         await self._wait.wait()
-
-    async def close(self):
-        await super().close()
-        if self.continuouscheck_started:
-            self._statuslist.add("continuouscheck_stopped")
-            self.continuouscheck_started = False
-            self._wait.set()
 
     async def shutdown(self):
         if not self._healthstatus_task:
@@ -93,7 +86,7 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
                     status_code = None
                     status_code,data = await self.receive(-1)
                     #logger.error("Receiving health status data: code={}, data={}".format(status_code,data))
-                    if status_code == socket.HEALTHCONFIG_HAHSCODE:
+                    if status_code == socket.HEALTHCONFIG_HASHCODE:
                         if self.healthcheck.config_hashcode != data:
                             self.healthcheck.reload()
                             self._statuslist.add("reload")

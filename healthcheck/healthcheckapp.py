@@ -588,6 +588,7 @@ async def preview_editing_healthcheck():
     try:
         result = await commandclient.exec("start_preview_healthcheck",1)
         if result[0]:
+            editinghealthstatuslistener.continuouscheck_started = True
             msg = None
         else:
             msg = [result[1]]
@@ -697,6 +698,7 @@ async def start_preview_editing_healthcheck():
     try:
         result = await commandclient.exec("start_preview_healthcheck",1)
         if result[0]:
+            editinghealthstatuslistener.continuouscheck_started = True
             msg = "OK"
         else:
             msg = result[1]
@@ -714,6 +716,7 @@ async def stop_preview_editing_healthcheck():
     try:
         result = await commandclient.exec("stop_preview_healthcheck",1)
         if result[0]:
+            editinghealthstatuslistener.continuouscheck_started = False
             msg = "OK"
         else:
             msg = result[1]
@@ -756,7 +759,7 @@ async def editinghealthstatusstream():
 
         if editinghealthstatuslistener.continuouscheck_started:
             yield "{}\n".format(json.dumps("continuouscheck_started")).encode()
-        else:
+        elif editinghealthstatuslistener.continuouscheck_started == False:
             yield "{}\n".format(json.dumps("continuouscheck_stopped")).encode()
 
         reader = editinghealthstatuslistener.get_healthstatusreader()

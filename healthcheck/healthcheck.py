@@ -31,6 +31,33 @@ logger = logging.getLogger("healthcheck.healthcheck")
 #urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 PRTGDATA_NOT_ENABLED = "Disabled"
 
+RESERVED_PRTG_CHANNELS = {
+    "__status__": {
+        "unit": "Custom",
+        "customunit": "status",
+        "float": 1,
+        "value": 0
+    }
+    ,
+    "__processtime__": {
+        "unit": "Custom",
+        "customunit": "processtime",
+        "float": 1,
+        "value": 0
+    },
+    "__attempts__": {
+        "unit": "Custom",
+        "customunit": "count",
+        "float": 1,
+        "value": 0
+    }
+}
+RESERVED_PRTG_CHANNELNAME = {
+    "__status__": lambda service:"{} Status".format(service["name"]),
+    "__processtime__": lambda service: "{} Processtime".format(service["name"]),
+    "__attempts__": lambda service: "{} Attempts".format(service["name"])
+}
+
 class BaseServiceHealthCheckTask(object):
     def __init__(self,servicehealthcheck):
         self.servicehealthcheck = servicehealthcheck
@@ -51,6 +78,7 @@ class BaseServiceHealthCheckTask(object):
     async def run(self):
         attempts = 0
         endtime = None
+        processtime = 0
         res = None
         healthstatus = None
         nextchecktime = self.servicehealthcheck.healthstatus_nextchecktime
@@ -83,23 +111,31 @@ class BaseServiceHealthCheckTask(object):
                                 res = await func(self.servicehealthcheck.url)
                     finally:
                         endtime = utils.now()
+                        processtime = (endtime - starttime).total_seconds() * 1000
         
-                    healthstatus = HealthCheck.check_response(self.servicehealthcheck,res)
-                    if attempts > 1:
-                        healthstatus[1] = "{1}. Attempts:{0}".format(attempts,healthstatus[1])
-                except (httpx.TimeoutException,httpx.NetworkError,httpx.StreamError,httpx.ProxyError) as ex:
-                    if attempts < self.servicehealthcheck.retry and nextchecktime and (nextchecktime - endtime).total_seconds() >= self.servicehealthcheck.total_retry_processtime:
-                        #guarantee that next check will not overlap with next retry
+                    healthstatus = HealthCheck.check_response(self.servicehealthcheck,res,attempts,processtime)
+                except (httpx.ConnectTimeout,httpx.NetworkError,httpx.ProxyError) as ex:
+                    if attempts >= self.servicehealthcheck.retry:
+                        healthstatus = HealthCheck.populate_healthstatus(self.servicehealthcheck,"red","httpx.{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),attempts,processtime)
+                    else:
+                        if self.servicehealthcheck.retry_interval:
+                            await asyncio.sleep(self.servicehealthcheck.retry_interval)
+                        continue
+                except (httpx.TimeoutException,httpx.StreamError) as ex:
+                    if attempts >= self.servicehealthcheck.retry:
+                        healthstatus = ["red","httpx.{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),None]
+                    elif nextchecktime and (nextchecktime - endtime).total_seconds() >= self.servicehealthcheck.total_retry_processtime:
+                        #still have time to try again
                         if self.servicehealthcheck.retry_interval:
                             await asyncio.sleep(self.servicehealthcheck.retry_interval)
                         continue
                     else:
-                        healthstatus = ["red","httpx.{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),None]
+                        healthstatus = HealthCheck.populate_healthstatus(self.servicehealthcheck,"red","httpx.{1}: {2}. No time to try again. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),attempts,processtime)
                 except Exception as ex:
                     if ex.__class__.__module__ == "builtins":
-                        healthstatus = ["error","{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),None]
+                        healthstatus = HealthCheck.populate_healthstatus(self.servicehealthcheck,"error","{1}: {2}. Attempts={0}".format(attempts,ex.__class__.__name__,str(ex)),attempts,processtime)
                     else:
-                        healthstatus = ["error","{1}.{2}: {3}. Attempts={0}".format(attempts,ex.__class__.__module__,ex.__class__.__name__,str(ex)),None]
+                        healthstatus = HealthCheck.populate_healthstatus(self.servicehealthcheck,"error","{1}.{2}: {3}. Attempts={0}".format(attempts,ex.__class__.__module__,ex.__class__.__name__,str(ex)),attempts,processtime)
             else:
                 healthstatus = ["green","OK",None]
                 endtime = utils.now()
@@ -109,6 +145,7 @@ class BaseServiceHealthCheckTask(object):
         
         healthstatus.append(healthstatus[2] in self.servicehealthcheck.healthdetailpersistent)
         self.servicehealthcheck.healthstatus_healthdata = healthstatus
+        self.servicehealthcheck.healthstatus_running = False
 
         try:
             await self.servicehealthcheck.save_checkingstatus(healthstatus,res,attempts)
@@ -961,13 +998,29 @@ class ServiceHealthCheck(UserDict):
     @property
     def healthstatus(self):
         """
-        return healthstatus [next checktime,[starttime,endtime,health status,health status message,prtg data,health checking persistent?]] 
+        server side: [next checktime,[starttime,endtime,health status,health status message,prtg data,health checking persistent?],running?] 
+        app side: [next checktime,[starttime,endtime,health status,health status message,prtg data,health checking persistent?]] 
         """
         return self.get("healthstatus")
 
     @healthstatus.setter
     def healthstatus(self,val):
         self["healthstatus"] = val
+
+    @property
+    def healthstatus_running(self):
+        """
+        Only available in server side
+        """
+        status = self.get("healthstatus")
+        return status[2] if status else False
+
+    @healthstatus_running.setter
+    def healthstatus_running(self,val):
+        """
+        Only available in server side
+        """
+        self["healthstatus"][2] = val
 
     @property
     def healthstatus_healthdata(self):
@@ -1153,7 +1206,7 @@ class ServiceHealthCheck(UserDict):
         last_healthcheck = self.healthcheckpages.last_healthcheck
 
         next_checktime = self.get_nextchecktime(self["offset"],last_healthcheck[0] if last_healthcheck else None)
-        self.healthstatus = [next_checktime,last_healthcheck] 
+        self.healthstatus = [next_checktime,last_healthcheck,False] 
 
 
 class JsonStatusMixin(object):
@@ -1310,7 +1363,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         else:
                             service.healthstatus[0] = next_checktime
                 else:
-                    service.healthstatus = [next_checktime,None] 
+                    service.healthstatus = [next_checktime,None,False] 
                 if existing_service:
                     service._last_greenhealthcheck = existing_service._last_greenhealthcheck
                     service._last_yellowhealthcheck = existing_service._last_yellowhealthcheck
@@ -1585,7 +1638,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 if baseprtgconfig:
                     failed = False
                     #initialize the prtg config
-                    #convert the list to map
+                    #convert list to map
                     configs = {}
                     for prtgconfig in baseprtgconfig:
                         prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
@@ -1632,6 +1685,16 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         continue
 
                     baseprtgconfig = configs
+
+            #add the reserved prtg data to baseprtgconfig
+            if baseprtgconfig:
+                for k,v in RESERVED_PRTG_CHANNELS.items():
+                    if k in baseprtgconfig:
+                        #configured , ignore the RESERVED config
+                        continue
+                    baseprtgconfig[k] = v
+            else:
+                baseprtgconfig = RESERVED_PRTG_CHANNELS
 
             services = OrderedDict()
             serviceindex = 0
@@ -1876,6 +1939,11 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 service = ServiceHealthCheck(self,service)
 
                 #merge the sector's prtg config into service's prtg config
+                reserved_prtg_channelids = set(RESERVED_PRTG_CHANNELS.keys())
+                reserved_prtg_channelnames = dict()
+                for k,func in RESERVED_PRTG_CHANNELNAME.items():
+                    reserved_prtg_channelnames[k] = func(service)
+
                 if service.get("prtg"):
                     if not isinstance(service["prtg"],list):
                         service["prtg"] = [service["prtg"]]
@@ -1914,6 +1982,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         if failed:
                             break
 
+
                         #find the baseconfig
                         baseconfig = baseprtgconfig.get(prtgconfig["id"]) if baseprtgconfig else None
 
@@ -1928,10 +1997,10 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                 else:
                     service["prtg"] = None
 
+                prtgconfigmap = OrderedDict()
                 if service["prtg"]:
                     #initialize the final prtg config
                     #convert the prtg config from list to dict
-                    prtgconfigmap = OrderedDict()
                     for prtgconfig in service["prtg"]:
                         prtgconfig["channel"] = prtgconfig.get("channel") or service["name"]
                         prtgconfig["unit"] = prtgconfig.get("unit") or "Custom"
@@ -1953,7 +2022,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         computed_columns = {}
                         for k,v in prtgconfig.items():
                             if callable(v):
-                                #turn the two arguments to one argument is required
+                                #turn the func with two arguments to a func with one argument if required
                                 computed_columns[k] = checks.lambda_func_fatctory(service,v)
 
                         for k in computed_columns.keys():
@@ -1961,7 +2030,19 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
                         prtgconfigmap[channelid] = (prtgconfig,getdata_map,computed_columns)
 
-                    service["prtg"] = prtgconfigmap
+                        #remove it from reserved prtg channel set to avoid to add this reserved prtg channel again.
+                        reserved_prtg_channelids.discard(channelid)
+                        if prtgconfig["channel"] in reserved_prtg_channelnames:
+                            #the default channel name used by reserved prtg channels is configured in service prtg data, ignore the related reserved prtd data
+                            reserved_prtg_channelids.discard(reserved_prtg_channelnames[prtgconfig["channel"]])
+
+                #Add the RESERVED PRTG DATA if still has some reserved prtg channels are not added.
+                for channelid in reserved_prtg_channelids:
+                    prtgconfig = dict(baseprtgconfig[channelid])
+                    prtgconfig["channel"] = RESERVED_PRTG_CHANNELNAME[channelid](service)
+                    prtgconfigmap[channelid] = (prtgconfig,{},{})
+
+                service["prtg"] = prtgconfigmap
 
 
                 if not service["healthchecks"]:
@@ -2060,7 +2141,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
     def _schedule_continuous_check(self,taskcls,*args):
         shutdown.unregister_scheduled_task(self._continuous_check_task)
-        asyncio.create_task(self._continuous_check(taskcls,*args))
+        self._continuous_check_task = asyncio.create_task(self._continuous_check(taskcls,*args))
 
     def stop_continuous_check(self):
         if not self._continuous_check_task:
@@ -2096,11 +2177,19 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                     continue
                 if now >= service.healthstatus_nextchecktime:
                     #check this service now
-                    logger.debug("{} : Run a task to check the service({}.{}.lastchecktime = {}, next checktime={})  to task runner.".format(self,service.sectionid,service.serviceid,service.healthstatus_nextcheck,service.get_nextchecktime(service["offset"],service.healthstatus_nextchecktime,now,today,tomorrow,seconds_in_day)))
-                    task = taskcls(service,*args)
-                    asyncio.create_task(task.run())
-                    next_checktime = service.get_nextchecktime(service["offset"],service.healthstatus_nextchecktime,now,today,tomorrow,seconds_in_day)
-                    service.healthstatus_nextchecktime = next_checktime
+                    if service.healthstatus_running:
+                        #the healthcheck of this service is running now
+                        #can't launch another healthcheck. delay 5 seconds and try again
+                        next_checktime = now + timedelta(seconds=5)
+                    else:
+                        #the healthcheck of this service is not running
+                        logger.debug("{} : Run a task to check the service({}.{}.lastchecktime = {}, next checktime={})  to task runner.".format(self,service.sectionid,service.serviceid,service.healthstatus_nextcheck,service.get_nextchecktime(service["offset"],service.healthstatus_nextchecktime,now,today,tomorrow,seconds_in_day)))
+                        service.healthstatus_running = True
+                        task = taskcls(service,*args)
+                        asyncio.create_task(task.run())
+                        next_checktime = service.get_nextchecktime(service["offset"],service.healthstatus_nextchecktime,now,today,tomorrow,seconds_in_day)
+                        #set the nextchecktime
+                        service.healthstatus_nextchecktime = next_checktime
                 else:
                     next_checktime = service.healthstatus_nextchecktime
                 if not self._next_runtime or self._next_runtime > next_checktime:
@@ -2116,7 +2205,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
         seconds = (self._next_runtime - utils.now()).total_seconds()
         if seconds > 0:
             logger.debug("Waiting {} seconds to begin the next batch of service health check.".format(seconds))
-            self._continous_check_task = asyncio.get_running_loop().call_later(seconds,self._schedule_continuous_check,taskcls,*args)
+            self._continuous_check_task = asyncio.get_running_loop().call_later(seconds,self._schedule_continuous_check,taskcls,*args)
             shutdown.register_scheduled_task(self._continuous_check_task)
         else:
             self._continuous_check_task = asyncio.create_task(self._continuous_check(taskcls,*args))
@@ -2137,7 +2226,26 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
 
     @classmethod
-    def check_response(cls,serviceconfig,res):
+    def populate_healthstatus(cls,serviceconfig,status,message,attempts,processtime):
+        """
+        Get the healthstatus for exception
+        """
+        if serviceconfig["prtg"]:
+            prtgdata = {}
+            for channelid in serviceconfig["prtg"].keys():
+                if channelid == "__status__":
+                    prtgdata[channelid] = 3 if status == "green" else (2 if status == "yellow" else (1 if status == "red" else 0))
+                elif channelid == "__processtime__":
+                    prtgdata[channelid] = int(processtime) #milliseconds
+                elif channelid == "__attempts__":
+                    prtgdata[channelid] = attempts
+        else:
+            prtgdata = PRTGDATA_NOT_ENABLED
+
+        return [status,message,prtgdata]
+
+    @classmethod
+    def check_response(cls,serviceconfig,res,attempts,processtime):
         """
         Return [traffic light, msgs,prtg data]
         """
@@ -2164,6 +2272,12 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                         for channelid in serviceconfig["prtg"].keys():
                             if get_prtgdata.get(channelid):
                                 prtgdata[channelid] = get_prtgdata[channelid](res)
+                            elif channelid == "__status__":
+                                prtgdata[channelid] = 3 if key == "green" else (2 if key == "yellow" else (1 if key == "red" else 0))
+                            elif channelid == "__processtime__":
+                                prtgdata[channelid] = int(processtime) #milliseconds
+                            elif channelid == "__attempts__":
+                                prtgdata[channelid] = attempts
                     else:
                         prtgdata = PRTGDATA_NOT_ENABLED
 
@@ -2187,7 +2301,7 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
 
             except Exception as ex:
                 traceback.print_exc()
-                healthstatus = ["error","Failed to check health status '{}'.{}:{}".format(key,ex.__class__.__name__,str(ex)),None]
+                healthstatus = cls.populate_healthstatus(serviceconfig,"error","Failed to check health status '{}'.{}:{}".format(key,ex.__class__.__name__,str(ex)),attempts,processtime)
                 break
     
         if not healthstatus:
@@ -2197,9 +2311,13 @@ class HealthCheck(PRTGMixin,JsonStatusMixin):
                     message = res.text
                 else:
                     message = "non-text response"
-                healthstatus = ["error","Status Code:{}, Message:{}".format(res.status_code,message),None]
+                healthstatus = cls.populate_healthstatus(serviceconfig,"error","Status Code:{}, Message:{}".format(res.status_code,message),attempts,processtime)
             else:
-                healthstatus = ["error","All healthstatus configured in {} are not satisfied.".format(serviceconfig),None]
+                healthstatus = cls.populate_healthstatus(serviceconfig,"error","All healthstatus configured in {} are not satisfied.",attempts,processtime)
+
+
+        if attempts > 1:
+            healthstatus[1] = "{1}. Attempts:{0}".format(attempts,healthstatus[1])
     
         return healthstatus
 

@@ -21,12 +21,13 @@ Next Check Time : N/A
     {% endfor %}
 {% endfor %}
 
-let controller = null;
+let controller = null
 let connect_msg = "initial connecting..."
 let connect_times = 0
 let lasttime2receivedata = new Date()
 let heartbeat_timeouts = 0
 let running = true
+let fetching = false
 const nextcheck_timeout_delay = {{nextcheck_timeout_delay}}
 const statuslist = ["green","yellow","red","error"]
 
@@ -119,10 +120,10 @@ if (typeof continuouscheck_stopped === "function") {
 
 
 async function fetch_healthstatus() {
-    controller = new AbortController();
+    fetching = true
     connect_times += 1
-
     try {
+        controller = new AbortController();
         const response = await fetch("{{statusstreamurl}}",{redirect:"manual",signal: controller.signal})
         const decoderStream = new TextDecoderStream();
         if (response.type == "opaqueredirect") {
@@ -134,7 +135,7 @@ async function fetch_healthstatus() {
         const reader = resbody.getReader();
         let remaindata = ""
         let datas = null
-        while (true) {
+        while (running) {
             const { done, value } = await reader.read();
             lasttime2receivedata = new Date()
             if (done) {
@@ -216,6 +217,7 @@ Next Check Time : `  + nextcheckstr + `
                 throw new Error("Failed to sync services' healthcheck data, reconnect to healthcheck service.")
             }
         }
+        throw new Error("Stop fetching the healthcheck status.")
     } catch (error) { 
         if (controller !== null) {
             controller.abort()
@@ -224,6 +226,8 @@ Next Check Time : `  + nextcheckstr + `
             connect_msg = "Connect times(" + connect_times + ") : Can't read healthdata from web server, try again 5 seconds later: " + error
             console.error(connect_msg)
             setTimeout(fetch_healthstatus,5000)
+        } else {
+            fetching = false
         }
     }
 }
