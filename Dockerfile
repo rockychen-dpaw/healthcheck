@@ -14,7 +14,7 @@ ENV UV_LINK_MODE=copy \
   UV_PYTHON_DOWNLOADS=never \
   UV_PROJECT_ENVIRONMENT=/app/.venv
 
-COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /bin/
 
 # Since there's no point in shipping lock files, we move them
 # into a directory that is NOT copied into the runtime image.
@@ -35,8 +35,11 @@ RUN --mount=type=cache,target=/root/.cache \
 ##################################################################################
 
 FROM python:3.13-alpine
-LABEL org.opencontainers.image.authors=asi@dbca.wa.gov.au
-LABEL org.opencontainers.image.source=https://github.com/dbca-wa/healthcheck
+LABEL org.opencontainers.image.title="healthcheck" \
+  org.opencontainers.image.description="DBCA Healthcheck" \
+  org.opencontainers.image.source="https://github.com/dbca-wa/healthcheck" \
+  org.opencontainers.image.vendor="DBCA" \
+  org.opencontainers.image.authors="asi@dbca.wa.gov.au"
 
 # Install system updates
 RUN apk upgrade --no-cache
