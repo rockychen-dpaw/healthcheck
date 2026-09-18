@@ -45,6 +45,7 @@ function browserside_check() {
         }
         return 
     }
+    const nowstr = now.getFullYear() + '-' + (now.getMonth() + 1) + "-" + now.getDate() + "T" + now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds()
     Object.entries(healthstatus).forEach(([section, sectionstatus]) => {
         Object.entries(sectionstatus).forEach(([service,servicestatus]) => {
             if (!servicestatus["nextcheck"]) {
@@ -72,7 +73,7 @@ function browserside_check() {
                 if (connect_msg) {
                     healthstatus[section][service]["message"] = `Health Status : error 
     Health Status Message : ` + connect_msg + `
-    Next Check Time:` + nextcheckstr + `
+    Next Check Time : ` + nextcheckstr + `
     `
                     if (document.getElementById(section+ "-" + service + "-details")) {
                         document.getElementById(section+ "-" + service + "-details").style.display="none"
@@ -80,7 +81,10 @@ function browserside_check() {
                 } else {
                     healthstatus[section][service]["message"] = `Health Status : error 
     Health Status Message : Next Health check should be executed ` + Math.floor((now - servicestatus["nextcheck"]) / 1000) + ` seconds ago.
-    Next Check Time:` + nextcheckstr + `
+    Next Check Time : ` + nextcheckstr + `
+    Previous Check Time : ` + healthstatus[section][service]["checkstart"] + `
+    Previous Check Receive Time : ` + healthstatus[section][service]["receivetime"] + `
+    Scan Time : ` + nowstr + `
     `
                 }
             }
@@ -135,6 +139,8 @@ async function fetch_healthstatus() {
         const reader = resbody.getReader();
         let remaindata = ""
         let datas = null
+        let now = null
+        let nowstr = null
         while (running) {
             const { done, value } = await reader.read();
             lasttime2receivedata = new Date()
@@ -145,6 +151,8 @@ async function fetch_healthstatus() {
                 //continue to read data from stream
                 continue
             }
+            now = new Date()
+            nowstr = now.getFullYear() + '-' + (now.getMonth() + 1) + "-" + now.getDate() + "T" + now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds()
             datas = value.split("\n")
             for(let i = 0;i < datas.length - 1;i++) {
                 try{
@@ -190,14 +198,17 @@ async function fetch_healthstatus() {
                     });
                     const nextcheck = new Date(datas[i][1][0])
                     healthstatus[datas[i][0][0]][datas[i][0][1]]["nextcheck"] = nextcheck
+                    healthstatus[datas[i][0][0]][datas[i][0][1]]["sendtime"] = datas[i][2]
+                    healthstatus[datas[i][0][0]][datas[i][0][1]]["receivetime"] = nowstr
         
                     const nextcheckstr = nextcheck.getFullYear() + '-' + (nextcheck.getMonth() + 1) + "-" + nextcheck.getDate() + "T" + nextcheck.getHours() + ":" + nextcheck.getMinutes() + ":" + nextcheck.getSeconds()
                     healthstatus[datas[i][0][0]][datas[i][0][1]]["message"] = "Health Status : " + datas[i][1][1][2] + `
 Check Start Time : ` + datas[i][1][1][0] + `
 Check End Time : ` + datas[i][1][1][1] + `
 Health Status Message : ` + datas[i][1][1][3] + `
-Next Check Time : `  + nextcheckstr + `
-            `
+Next Check Time : `  + nextcheckstr + ` 
+Receive Time : `  + nowstr + `
+`
                     if (datas[i][1][1][4]) {
                         document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details").style.display="inline";
                         document.getElementById(datas[i][0][0]+ "-" + datas[i][0][1] + "-details-link").href= "{{baseurl}}/details/"+ datas[i][0][0] + "/" +  datas[i][0][1] + "/" + datas[i][1][1][0]

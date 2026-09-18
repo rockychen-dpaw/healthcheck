@@ -245,7 +245,7 @@ async def reload_dashboard():
         return "Failed to reload the dashboard.{}".format(str(ex)), 500
 
 def dump_servicehealthstatus(sectionid,serviceid,healthstatus):
-    return '[[\"{}\",\"{}\"],[{},[{},{},\"{}\",{},{}]]]\n'.format(
+    return '[[\"{}\",\"{}\"],[{},[{},{},\"{}\",{},{}]],\"{}\"]\n'.format(
         sectionid,
         serviceid,
         healthstatus[0].strftime("\"%Y-%m-%dT%H:%M:%S.%f\"") if healthstatus[0] else "null",
@@ -253,7 +253,8 @@ def dump_servicehealthstatus(sectionid,serviceid,healthstatus):
         healthstatus[1][1].strftime("\"%Y-%m-%dT%H:%M:%S.%f\"") if healthstatus[1] and healthstatus[1][1] else "null",
         healthstatus[1][2] if healthstatus[1] else "" ,
         json.dumps(healthstatus[1][3] if healthstatus[1] else ""),
-        "true" if healthstatus[1] and healthstatus[1][-1] else "false"
+        "true" if healthstatus[1] and healthstatus[1][-1] else "false",
+        datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
     )
 
 @app.route("/healthcheck/healthstatusstream",defaults={'system': None})
