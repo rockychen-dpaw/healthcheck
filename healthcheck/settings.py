@@ -19,6 +19,13 @@ try:
 except:
     HEARTBEAT = 10
 
+try:
+    STATUSSTREAM_HEARTBEAT = int(os.environ.get("STATUSSTREAM_HEARTBEAT"),8)
+    if STATUSSTREAM_HEARTBEAT < 0 :
+        STATUSSTREAM_HEARTBEAT = 8
+except:
+    STATUSSTREAM_HEARTBEAT = 8
+
 HEALTHCHECKSERVICE_TIMEOUT = int(os.environ.get("HEALTHCHECKSERVICE_TIMEOUT",5000)) #milliseconds
 CONNECT_TIMEOUT = int(os.environ.get("CONNECT_TIMEOUT",2000)) #milliseconds
 HEALTHCHECKSERVICE_RETRY = int(os.environ.get("HEALTHCHECKSERVICE_RETRY",3)) #retry times

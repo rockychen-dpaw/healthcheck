@@ -24,9 +24,21 @@ class Event(object):
         self.index = 0
         self._clear = False 
 
-    async def wait(self):
-        self.locks[self.index][1] += 1
-        await self.locks[self.index][0].wait()
+    async def wait(self,timeout=None):
+        """
+        Return True if not timeout, otherwise False
+        """
+        lock = self.locks[self.index]
+        lock[1] += 1
+        if timeout:
+            try:
+                async with asyncio.timeout(timeout):
+                    await lock[0].wait()
+            except asyncio.TimeoutError as ex:
+                return True if lock[0].is_set() else False
+        else:
+            await lock[0].wait()
+            return True
 
     def set(self):
         if self.locks[self.index][1] == 0:
@@ -57,11 +69,11 @@ class BaseHealthStatusListenerClient(socket.SocketClient):
         self._wait = Event()
         self.continuouscheck_started = None
 
-    async def wait(self):
+    async def wait(self,timeout=None):
         """
         Block forever until waked by new healthstatus
         """
-        await self._wait.wait()
+        await self._wait.wait(timeout=timeout)
 
     async def shutdown(self):
         if not self._healthstatus_task:
@@ -146,7 +158,8 @@ class HealthStatusListenerClient(BaseHealthStatusListenerClient):
     conn_type = socket.HEALTHSTATUS_SUBSCRIPTOR
 
     def __init__(self):
-        super().__init__(settings.HEARTBEAT + 2)
+        #super().__init__(settings.HEARTBEAT * 3)
+        super().__init__(0)
 
     @property
     def healthcheck(self):
