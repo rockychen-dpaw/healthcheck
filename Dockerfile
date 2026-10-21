@@ -14,7 +14,9 @@ ENV UV_LINK_MODE=copy \
   UV_PYTHON_DOWNLOADS=never \
   UV_PROJECT_ENVIRONMENT=/app/.venv
 
-COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /bin/
+RUN pip install --upgrade pip
+
+COPY --from=ghcr.io/astral-sh/uv:0.13.4 /uv /bin/
 
 # Since there's no point in shipping lock files, we move them
 # into a directory that is NOT copied into the runtime image.
@@ -43,6 +45,8 @@ LABEL org.opencontainers.image.title="healthcheck" \
 
 # Install system updates
 RUN apk upgrade --no-cache
+
+RUN pip install --upgrade pip
 
 # Create a non-root user to run the application.
 RUN addgroup -g 1000 app \
