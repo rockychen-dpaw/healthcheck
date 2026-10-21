@@ -15,8 +15,7 @@ dependencies = [
   "python-dotenv==1.2.3",
   "httpx==0.28.1",
   "humanize==4.16.0",
-  "defusedxml==0.7.1",
-  "certifi>=2026.10.19"
+  "defusedxml==0.7.1"
 ]
 
 [dependency-groups]
